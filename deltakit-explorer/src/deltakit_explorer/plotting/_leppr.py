@@ -8,6 +8,7 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
 from deltakit_explorer.analysis import LogicalErrorProbabilityPerRoundData as LEPPRData
+from deltakit_explorer.analysis import calculate_lep_asymmetric
 from deltakit_explorer.plotting.plotting import plot
 from deltakit_explorer.plotting.results import interpolate_leppr
 
@@ -21,6 +22,8 @@ def plot_logical_error_probability_per_round(
     ) = None,
     *,
     num_sigmas: int = 3,
+    num_failed_shots: npt.NDArray[np.int_] | Sequence[int] | None = None,
+    num_shots: npt.NDArray[np.int_] | Sequence[int] | None = None,
     fig: Figure | None = None,
     ax: Axes | None = None,
 ) -> tuple[Figure, Axes]:
@@ -39,7 +42,14 @@ def plot_logical_error_probability_per_round(
             standard deviation of the logical error probabilities corresponding
             to the number of rounds in ``num_rounds``. If None, no error bars
             will be plotted. Default is None.
-        num_sigmas: number of sigmas to consider when plotting error bars.
+        num_sigmas: number of sigmas to consider when plotting the symmetric
+            error bars and the fitted confidence band.
+        num_failed_shots: the number of logical failures per round count. When
+            given together with ``num_shots``, the data points are drawn with
+            asymmetric binomial error bars instead of the symmetric standard
+            deviation. Default is None.
+        num_shots: the number of shots per round count, used together with
+            ``num_failed_shots`` for the binomial error bars. Default is None.
         fig: a matplotlib Figure object to plot on. If None, a new figure
             will be created. Default is None.
         ax: a matplotlib Axes object to plot on. If None, a new axes will
@@ -96,22 +106,38 @@ def plot_logical_error_probability_per_round(
     isort = np.argsort(num_rounds)
     num_rounds = np.asarray(num_rounds)[isort]
     logical_error_probability = np.asarray(logical_error_probability)[isort]
-    if logical_error_probability_stddev is not None:
-        logical_error_probability_stddev = (
-            num_sigmas * np.asarray(logical_error_probability_stddev)[isort]
-        )
 
-    # Plot the logical error probabilities
+    # Use a binomial interval for the data points when the raw counts are given,
+    # otherwise fall back to the symmetric standard deviation.
+    if num_failed_shots is not None and num_shots is not None:
+        low, _, high = calculate_lep_asymmetric(
+            np.asarray(num_failed_shots)[isort], np.asarray(num_shots)[isort]
+        )
+        yerr = np.clip(
+            np.vstack(
+                (logical_error_probability - low, high - logical_error_probability)
+            ),
+            0,
+            None,
+        )
+        marker_label = "Logical error probabilities (binomial interval)"
+    elif logical_error_probability_stddev is not None:
+        yerr = num_sigmas * np.asarray(logical_error_probability_stddev)[isort]
+        marker_label = f"Logical error probabilities (±{num_sigmas}σ)"  # noqa: RUF001
+    else:
+        yerr = None
+        marker_label = "Logical error probabilities"
+
     ax.errorbar(
         num_rounds,
         logical_error_probability,
-        yerr=logical_error_probability_stddev,
+        yerr=yerr,
         fmt=".",
         color=RIVERLANE_PLOT_COLOURS[0],
-        label=f"Logical error probabilities (±{num_sigmas}σ)",  # noqa: RUF001
+        label=marker_label,
     )
 
-    leppr_result = interpolate_leppr(leppr_data, num_rounds, num_sigmas=num_sigmas)
+    leppr_result = interpolate_leppr(leppr_data, num_sigmas=num_sigmas)
 
     plot(leppr_result, fig=fig, ax=ax)
 

@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+import numpy as np
 from deltakit_core.plotting.colours import RIVERLANE_PLOT_COLOURS
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
@@ -61,11 +62,22 @@ def plot_lambda(
     assert ax is not None
     assert fig is not None
 
-    # Plot the logical error probabilities per round
+    # Plot the logical error probabilities per round. The bars are made
+    # asymmetric through the fidelity 1 - 2*leppr so they do not reach below zero
+    # when the rate is small.
+    fidelity = 1 - 2 * np.asarray(lambda_data.leppr)
+    sigma_log = 2 * np.asarray(lambda_data.leppr_std) / fidelity
+    leppr_low = (1 - fidelity * np.exp(num_sigmas * sigma_log)) / 2
+    leppr_high = (1 - fidelity * np.exp(-num_sigmas * sigma_log)) / 2
+    yerr = np.clip(
+        np.vstack((lambda_data.leppr - leppr_low, leppr_high - lambda_data.leppr)),
+        0,
+        None,
+    )
     ax.errorbar(
         lambda_data.distances,
         lambda_data.leppr,
-        yerr=lambda_data.leppr_std * num_sigmas,
+        yerr=yerr,
         fmt=".",
         color=RIVERLANE_PLOT_COLOURS[1],
         label=f"Logical error probabilities per round (±{num_sigmas}σ)",  # noqa: RUF001
