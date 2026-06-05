@@ -1,4 +1,3 @@
-import math
 from collections.abc import Callable, Iterator, Mapping, Sequence
 
 import numpy as np
@@ -7,6 +6,10 @@ import pandas as pd
 from deltakit_circuit._circuit import Circuit
 from deltakit_decode.analysis._run_all_analysis_engine import RunAllAnalysisEngine
 
+from deltakit_explorer.analysis._propagation import (
+    polynomial_derivative_stddev,
+    reciprocal_stddev,
+)
 from deltakit_explorer.analysis.error_budget._generation import (
     generate_decoder_managers_for_lambda,
 )
@@ -112,43 +115,9 @@ def _approximate_derivative_at_point_from_values(
     # and ``cov[i,i]`` is the variance of ``coefficients[i]``).
     coefficients, cov = np.flip(coefficients), np.flip(cov)
 
-    # Compute the derivative
-    derivative = float(
-        sum(
-            coefficient * (power + 1) * gradient_approximation_point**power
-            for power, coefficient in enumerate(coefficients[1:])
-        )
+    return polynomial_derivative_stddev(
+        coefficients, cov, gradient_approximation_point
     )
-    # Compute the variance of the derivative estimate
-    standard_deviation = math.sqrt(
-        _get_variance_of_gradient_estimation_at_point(cov, gradient_approximation_point)
-    )
-    return derivative, standard_deviation
-
-
-def _get_variance_of_gradient_estimation_at_point(
-    cov: npt.NDArray[np.floating], c: float
-) -> float:
-    """Get the variance of the gradient estimation at the point ``c`` for a polynomial
-    with uncertainties on its coefficients provided by the covariance matrix ``cov``.
-
-    Args:
-        cov (npt.NDArray[numpy.floating]): an array of shape ``(d + 1, d + 1)``
-            representing the covariance matrix of the coefficients defining the degree-d
-            polynomial used to estimate the gradient.
-        c (float): point at which the degree-d polynomial will be used to estimate the
-            gradient value.
-
-    Returns:
-        The variance of the gradient estimation at point ``c``.
-    """
-    # From https://en.wikipedia.org/wiki/Covariance#Covariance_of_linear_combinations we
-    # have an easy formula for the variance involving the covariance matrix.
-    n = cov.shape[0]
-    coeff_matrix = np.array(
-        [[(i + 1) * (j + 1) * c ** (i + j) for i in range(n - 1)] for j in range(n - 1)]
-    )
-    return float(np.sum(coeff_matrix * cov[1:, 1:]))
 
 
 def generate_sweep_parameters(
@@ -287,7 +256,9 @@ def get_lambda_gradient(
         sweep_noise_parameters, noise_parameter_names, num_rounds_by_distances, report
     )
     lambda_reciprocals = 1 / lambdas
-    lambda_reciprocal_stddevs = np.abs(lambda_stddevs / lambdas**2)
+    lambda_reciprocal_stddevs = np.vectorize(reciprocal_stddev)(
+        lambdas, lambda_stddevs
+    )
 
     # We now have all the estimations of 1 / Λ, we can approximate the gradient
     # Note that ``noise_parameters``, ``lambda_reciprocals`` and

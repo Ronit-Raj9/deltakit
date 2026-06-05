@@ -5,6 +5,7 @@ import numpy.typing as npt
 from deltakit_circuit._circuit import Circuit
 from deltakit_decode.analysis import RunAllAnalysisEngine
 
+from deltakit_explorer.analysis._propagation import reciprocal_stddev
 from deltakit_explorer.analysis.error_budget._generation import (
     generate_decoder_managers_for_lambda,
 )
@@ -90,6 +91,8 @@ def inverse_lambda_at(
         point, noise_parameter_names, num_rounds_by_distances, report
     )
     lambda_reciprocals = 1 / lambdas
-    lambda_reciprocal_stddevs = np.abs(lambda_stddevs / lambdas**2)
+    lambda_reciprocal_stddevs = np.vectorize(reciprocal_stddev)(
+        lambdas, lambda_stddevs
+    )
 
     return float(lambda_reciprocals[0, 0]), float(lambda_reciprocal_stddevs[0, 0])
