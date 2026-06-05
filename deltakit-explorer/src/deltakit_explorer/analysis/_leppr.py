@@ -243,6 +243,12 @@ def compute_logical_error_per_round(
             "this warning."
         )
 
+    # Following https://arxiv.org/pdf/2505.09684v1 (Methods - Extracting logical error
+    # per cycle, page 8) we estimate the variance on the logical error probability per
+    # round (named Perrc below) using the formula
+    #      sigma(Perrc) = (1 - Perrc) * sigma(slope)
+    # The standard deviation on the linear fit parameters is obtained from the
+    # covariance matrix and propagated by the helper below.
     (
         (estimated_logical_error_per_round, estimated_logical_error_per_round_stddev),
         (

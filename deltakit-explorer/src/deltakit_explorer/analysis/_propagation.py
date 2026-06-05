@@ -12,7 +12,7 @@ from collections.abc import Sequence
 
 import numpy as np
 import numpy.typing as npt
-from uncertainties import correlated_values, ufloat
+from uncertainties import correlated_values, ufloat, unumpy
 from uncertainties.umath import exp as uexp
 from uncertainties.umath import log as ulog
 
@@ -67,13 +67,8 @@ def log_fidelity_stddev(
     """
     lep_arr = np.asarray(lep, dtype=np.float64)
     std_arr = np.asarray(lep_stddev, dtype=np.float64)
-    return np.asarray(
-        [
-            float(ulog(1 - 2 * ufloat(float(p), float(s))).std_dev)
-            for p, s in zip(lep_arr.ravel(), std_arr.ravel(), strict=True)
-        ],
-        dtype=np.float64,
-    ).reshape(lep_arr.shape)
+    uncertain_log_fidelity = unumpy.log(1 - 2 * unumpy.uarray(lep_arr, std_arr))
+    return unumpy.std_devs(uncertain_log_fidelity).astype(np.float64)
 
 
 def epsilon_and_spam_from_log_fit(
@@ -82,6 +77,12 @@ def epsilon_and_spam_from_log_fit(
     cov: npt.NDArray[np.floating],
 ) -> tuple[tuple[float, float], tuple[float, float]]:
     """LEPPR and SPAM error from correlated log-linear fit parameters.
+
+    Following https://arxiv.org/pdf/2505.09684v1 (Methods - Extracting logical
+    error per cycle, page 8), the logical error probability per round and the
+    SPAM error are recovered as ``(1 - exp(slope)) / 2`` and
+    ``(1 - exp(offset)) / 2`` respectively, with standard deviations propagated
+    from the fit covariance matrix.
 
     Args:
         slope: Slope from log-fidelity linear fit.
@@ -104,6 +105,11 @@ def lambda_from_shifted_fit(
 ) -> tuple[tuple[float, float], tuple[float, float]]:
     """Error suppression factors from shifted-distance linear fit.
 
+    Recovers ``Λ = exp(-2 · slope)`` and ``Λ₀ = exp(-offset - ln(Λ)/2)``, with
+    standard deviations propagated from the fit covariance matrix following the
+    standard formulae at
+    https://en.wikipedia.org/wiki/Propagation_of_uncertainty#Example_formulae
+
     Args:
         slope: Slope from shifted linear fit.
         offset: Offset from shifted linear fit.
@@ -124,6 +130,11 @@ def lambda_from_lin_fit(
     cov: npt.NDArray[np.floating],
 ) -> tuple[tuple[float, float], tuple[float, float]]:
     """Error suppression factors from (d+1)/2 linear fit.
+
+    Recovers ``Λ = exp(-slope)`` and ``Λ₀ = exp(-offset)``, with standard
+    deviations propagated from the fit covariance matrix following the standard
+    formulae at
+    https://en.wikipedia.org/wiki/Propagation_of_uncertainty#Example_formulae
 
     Args:
         slope: Slope from linear fit over ``(d+1)/2``.

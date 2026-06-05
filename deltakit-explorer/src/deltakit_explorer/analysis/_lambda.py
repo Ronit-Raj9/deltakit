@@ -108,7 +108,19 @@ def _lambda_shifted_fit(
          Λ  = exp(-2 · slope)
          Λ₀ = exp(-offset - ln(Λ)/2)
 
-    Standard deviations are computed via linear error propagation (_propagation).
+    Standard deviations are computed via linear error propagation (in
+    `_propagation`), following the standard formulae found in:
+    https://en.wikipedia.org/wiki/Propagation_of_uncertainty#Example_formulae
+
+        (ln(Λ)/2) = Δ(Λ) / (2 · Λ)
+
+        Δ(-offset - ln(Λ)/2)
+            = sqrt( Δ(offset)² + Δ(Λ)² / (4 · Λ²)
+                    - 2 · cov(offset, ln(Λ)/2) )
+
+        Δ(Λ₀)
+            = Λ₀ · sqrt( Δ(offset)² + Δ(Λ)² / (4 · Λ²)
+                         - 2 · cov(offset, ln(Λ)/2) )
 
     Args:
         distances: Code distances.
@@ -177,7 +189,12 @@ def _lambda_lin_fit(
          Λ  = exp(-slope)
          Λ₀ = exp(-offset)
 
-    Standard deviations are computed via linear error propagation (_propagation).
+    Standard deviations are computed via linear error propagation (in
+    `_propagation`), following the standard formulae found in:
+    https://en.wikipedia.org/wiki/Propagation_of_uncertainty#Example_formulae
+
+        Δ(Λ)  = Λ · Δ(slope)
+        Δ(Λ₀) = Λ₀ · Δ(offset)
 
     Args:
         distances: Code distances.
