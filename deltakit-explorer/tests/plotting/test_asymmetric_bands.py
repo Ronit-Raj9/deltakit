@@ -11,6 +11,8 @@ from deltakit_explorer.analysis import (
     calculate_lep_and_lep_stddev,
     compute_logical_error_per_round,
     compute_logical_error_per_round_asymmetric,
+    predict_quops_at_distance,
+    predict_quops_interval,
 )
 from deltakit_explorer.plotting import (
     interpolate_lambda,
@@ -138,3 +140,22 @@ class TestAsymmetricFitPipeline:
     def test_lambda_asymmetric_length_mismatch_raises(self):
         with pytest.raises(ValueError):
             calculate_lambda_asymmetric([3, 5], [0.1], [0.09], [0.11])
+
+    def test_quops_interval_from_asymmetric_lambda(self):
+        distances = [3, 5, 7, 9]
+        leppr = [3.0 ** (-(d + 1) / 2) / 2.0 for d in distances]
+        low = [e * 0.9 for e in leppr]
+        high = [e * 1.1 for e in leppr]
+        result = calculate_lambda_asymmetric(distances, leppr, low, high)
+        quops = predict_quops_interval(result, 11)
+        assert quops.low <= quops.best <= quops.high
+        assert quops.best == pytest.approx(
+            predict_quops_at_distance(result.lambda0, result.lambda_, 11)
+        )
+
+    def test_quops_interval_requires_asymmetric_bounds(self):
+        symmetric = calculate_lambda_and_lambda_stddev(
+            [3, 5, 7], [1e-2, 1e-3, 1e-4], [1e-3, 1e-4, 1e-5]
+        )
+        with pytest.raises(ValueError):
+            predict_quops_interval(symmetric, 11)

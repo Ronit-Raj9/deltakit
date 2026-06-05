@@ -9,6 +9,9 @@ References
 
 from collections.abc import Callable
 
+from deltakit_explorer.analysis._binomial_fit import Fit
+from deltakit_explorer.analysis._lambda import LambdaData
+
 
 def _equal_or_less_brute_force_search(
     func: Callable[[int], float],
@@ -81,6 +84,53 @@ def predict_quops_at_distance(lambda0: float, lambda_: float, distance: int) -> 
         )
         raise ValueError(msg)
     return 1.0 / _calculate_lep(lambda0, lambda_, distance, distance)
+
+
+def predict_quops_interval(lambda_data: LambdaData, distance: int) -> Fit:
+    """Predict the number of QuOps with a confidence interval.
+
+    This propagates the asymmetric bounds on Λ and Λ₀ from an asymmetric Lambda
+    fit (see :func:`calculate_lambda_asymmetric`) into the QuOps estimate. The
+    number of QuOps grows with Λ and shrinks with Λ₀, so the widest QuOps comes
+    from the largest Λ together with the smallest Λ₀.
+
+    Parameters
+    ----------
+    lambda_data (LambdaData):
+        A fit carrying the asymmetric bounds ``lambda_low`` / ``lambda_high`` and
+        ``lambda0_low`` / ``lambda0_high``.
+    distance (int):
+        The odd distance at which to evaluate the number of QuOps.
+
+    Returns
+    -------
+    Fit:
+        The best estimate and its lower and upper bounds.
+
+    Raises
+    ------
+    ValueError
+        If ``lambda_data`` does not carry asymmetric bounds.
+    """
+    if (
+        lambda_data.lambda_low is None
+        or lambda_data.lambda_high is None
+        or lambda_data.lambda0_low is None
+        or lambda_data.lambda0_high is None
+    ):
+        msg = (
+            "lambda_data must carry asymmetric bounds. Use "
+            "calculate_lambda_asymmetric to produce them."
+        )
+        raise ValueError(msg)
+    best = predict_quops_at_distance(lambda_data.lambda0, lambda_data.lambda_, distance)
+    low = predict_quops_at_distance(
+        lambda_data.lambda0_high, lambda_data.lambda_low, distance
+    )
+    high = predict_quops_at_distance(
+        lambda_data.lambda0_low, lambda_data.lambda_high, distance
+    )
+    return Fit(low=low, best=best, high=high)
 
 
 def predict_distance_for_quops(

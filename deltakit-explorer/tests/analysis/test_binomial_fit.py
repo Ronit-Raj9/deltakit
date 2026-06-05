@@ -9,8 +9,8 @@ from deltakit_explorer.analysis import (
     fit_binomial,
     fit_binomial_batch,
     fit_leppr_and_spam,
-    log_binomial,
 )
+from deltakit_explorer.analysis._binomial_fit import log_binomial
 
 
 def _model_counts(

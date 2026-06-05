@@ -11,7 +11,6 @@ from deltakit_explorer.analysis._binomial_fit import (
     fit_binomial,
     fit_binomial_batch,
     fit_leppr_and_spam,
-    log_binomial,
 )
 from deltakit_explorer.analysis._lambda import (
     LambdaData,
@@ -29,6 +28,7 @@ from deltakit_explorer.analysis._leppr import (
 from deltakit_explorer.analysis._quops import (
     predict_distance_for_quops,
     predict_quops_at_distance,
+    predict_quops_interval,
 )
 
 from . import error_budget
