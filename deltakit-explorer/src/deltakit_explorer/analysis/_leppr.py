@@ -10,6 +10,7 @@ from scipy.optimize import curve_fit
 from deltakit_explorer.analysis._binomial_fit import (
     DEFAULT_MAX_LIKELIHOOD_FACTOR,
     fit_binomial_batch,
+    fit_leppr_and_spam,
 )
 
 
@@ -23,6 +24,11 @@ class LogicalErrorProbabilityPerRoundData:
         num_rounds: Array containing the number of rounds.
         spam_error: Computed SPAM error probability.
         spam_error_stddev: SPAM error probability standard deviation.
+        leppr_low: Lower bound of the LEPPR confidence interval. Only set by
+            :func:`compute_logical_error_per_round_asymmetric`, otherwise None.
+        leppr_high: Upper bound of the LEPPR confidence interval, or None.
+        spam_error_low: Lower bound of the SPAM error interval, or None.
+        spam_error_high: Upper bound of the SPAM error interval, or None.
     """
 
     leppr: float
@@ -30,6 +36,10 @@ class LogicalErrorProbabilityPerRoundData:
     num_rounds: npt.NDArray[np.int_]
     spam_error: float
     spam_error_stddev: float
+    leppr_low: float | None = None
+    leppr_high: float | None = None
+    spam_error_low: float | None = None
+    spam_error_high: float | None = None
 
 
 def compute_logical_error_per_round(
@@ -382,6 +392,57 @@ def simulate_different_round_numbers_for_lep_per_round_estimation(
         nshots.append(nshot)
 
     return np.asarray(nrounds), np.asarray(nfails), np.asarray(nshots)
+
+
+def compute_logical_error_per_round_asymmetric(
+    num_rounds: npt.NDArray[np.int_] | Sequence[int],
+    num_fails: npt.NDArray[np.int_] | Sequence[int],
+    num_shots: npt.NDArray[np.int_] | Sequence[int],
+    *,
+    num_sigmas: float = 1.0,
+) -> LogicalErrorProbabilityPerRoundData:
+    """Fit the logical error probability per round with asymmetric intervals.
+
+    Unlike :func:`compute_logical_error_per_round`, which performs a weighted
+    least-squares fit with symmetric error bars, this fits the per-round model
+    directly to the raw counts by maximum binomial likelihood and profiles each
+    parameter for its confidence interval. The returned data carries both the
+    symmetric ``leppr_stddev`` (taken as half the interval width, for
+    compatibility) and the asymmetric ``leppr_low`` / ``leppr_high`` bounds.
+
+    Note that the per-round error and the SPAM error are correlated, so when the
+    data only weakly constrains one of them its interval can be wide; this
+    reflects the genuine uncertainty rather than a failure of the fit.
+
+    Args:
+        num_rounds: Number of QEC rounds for each measured point.
+        num_fails: Number of logical failures observed at each round count.
+        num_shots: Number of shots at each round count.
+        num_sigmas: Width of the interval, in sigmas.
+
+    Returns:
+        The fit results, with the asymmetric bounds populated.
+    """
+    rounds = np.asarray(num_rounds)
+    fails = np.asarray(num_fails)
+    shots = np.asarray(num_shots)
+    order = np.argsort(rounds)
+    rounds, fails, shots = rounds[order], fails[order], shots[order]
+
+    leppr_fit, spam_fit = fit_leppr_and_spam(
+        rounds, fails, shots, num_sigmas=num_sigmas
+    )
+    return LogicalErrorProbabilityPerRoundData(
+        leppr=leppr_fit.best,
+        leppr_stddev=(leppr_fit.high - leppr_fit.low) / 2,
+        num_rounds=rounds,
+        spam_error=spam_fit.best,
+        spam_error_stddev=(spam_fit.high - spam_fit.low) / 2,
+        leppr_low=leppr_fit.low,
+        leppr_high=leppr_fit.high,
+        spam_error_low=spam_fit.low,
+        spam_error_high=spam_fit.high,
+    )
 
 
 def calculate_lep_and_lep_stddev(

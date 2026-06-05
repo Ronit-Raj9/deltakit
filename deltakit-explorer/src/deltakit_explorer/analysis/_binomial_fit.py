@@ -169,3 +169,160 @@ def fit_binomial_batch(
     best = np.array([f.best for f in fits], dtype=np.float64).reshape(shots.shape)
     high = np.array([f.high for f in fits], dtype=np.float64).reshape(shots.shape)
     return low, best, high
+
+
+# --- Binomial likelihood fit of the per-round model -------------------------
+#
+# The functions below fit the memory model
+#
+#     LEP(r) = (1 - (1 - 2 * spam) * (1 - 2 * eps) ** r) / 2
+#
+# to the raw counts by maximising the total binomial likelihood, then profile
+# each parameter to obtain an asymmetric interval. Profiling means fixing the
+# parameter of interest, re-optimising the other one, and walking outward until
+# the log-likelihood has dropped by ``num_sigmas ** 2 / 2`` (the chi-square = 1
+# rule for one sigma). This is the same idea as Minuit's MINOS errors and, unlike
+# a weighted least-squares fit with symmetric sigmas, it keeps the bounds inside
+# the physical range and reflects the genuine skew of the likelihood near zero.
+
+_RATE_FLOOR = 1e-12
+_RATE_CEIL = 0.5 - 1e-9
+
+
+def _model_lep(
+    rounds: npt.NDArray[np.float64], eps: float, spam: float
+) -> npt.NDArray[np.float64]:
+    return (1 - (1 - 2 * spam) * (1 - 2 * eps) ** rounds) / 2
+
+
+def _total_neg_log_likelihood(
+    eps: float,
+    spam: float,
+    rounds: npt.NDArray[np.float64],
+    hits: npt.NDArray[np.int_],
+    shots: npt.NDArray[np.int_],
+) -> float:
+    model = _model_lep(rounds, eps, spam)
+    return -sum(
+        log_binomial(p=float(p), n=int(n), hits=int(k))
+        for p, n, k in zip(model, shots, hits, strict=True)
+    )
+
+
+def _best_fit(
+    rounds: npt.NDArray[np.float64],
+    hits: npt.NDArray[np.int_],
+    shots: npt.NDArray[np.int_],
+    eps_guess: float,
+    spam_guess: float,
+) -> tuple[float, float]:
+    """Maximum-likelihood ``(eps, spam)``, optimised in log space for scaling."""
+
+    def cost(log_params: npt.NDArray[np.float64]) -> float:
+        eps = float(np.clip(np.exp(log_params[0]), _RATE_FLOOR, _RATE_CEIL))
+        spam = float(np.clip(np.exp(log_params[1]), _RATE_FLOOR, _RATE_CEIL))
+        return _total_neg_log_likelihood(eps, spam, rounds, hits, shots)
+
+    start = np.log([max(eps_guess, _RATE_FLOOR), max(spam_guess, _RATE_FLOOR)])
+    result = optimize.minimize(cost, x0=start, method="Nelder-Mead")
+    eps = float(np.clip(np.exp(result.x[0]), _RATE_FLOOR, _RATE_CEIL))
+    spam = float(np.clip(np.exp(result.x[1]), _RATE_FLOOR, _RATE_CEIL))
+    return eps, spam
+
+
+def _profiled_neg_log_likelihood(
+    fixed_index: int,
+    fixed_value: float,
+    rounds: npt.NDArray[np.float64],
+    hits: npt.NDArray[np.int_],
+    shots: npt.NDArray[np.int_],
+) -> float:
+    """Negative log-likelihood with one parameter fixed and the other free."""
+
+    def cost(other: float) -> float:
+        eps, spam = (fixed_value, other) if fixed_index == 0 else (other, fixed_value)
+        return _total_neg_log_likelihood(eps, spam, rounds, hits, shots)
+
+    result = optimize.minimize_scalar(
+        cost, bounds=(_RATE_FLOOR, _RATE_CEIL), method="bounded"
+    )
+    return float(result.fun)
+
+
+def _profile_interval(
+    fixed_index: int,
+    best_value: float,
+    rounds: npt.NDArray[np.float64],
+    hits: npt.NDArray[np.int_],
+    shots: npt.NDArray[np.int_],
+    num_sigmas: float,
+) -> Fit:
+    # Anchor the target to the profiled likelihood at the best value (the global
+    # minimum), so the root is always bracketed regardless of optimiser noise.
+    nll_at_best = _profiled_neg_log_likelihood(
+        fixed_index, best_value, rounds, hits, shots
+    )
+    target = nll_at_best + 0.5 * num_sigmas**2
+
+    def excess(value: float) -> float:
+        return (
+            _profiled_neg_log_likelihood(fixed_index, value, rounds, hits, shots)
+            - target
+        )
+
+    def cross(bound: float) -> float:
+        # If the likelihood never rises enough before the bound, the parameter is
+        # consistent with that bound and the interval is open there.
+        if excess(bound) <= 0:
+            return bound
+        low_x, high_x = (
+            (bound, best_value) if bound < best_value else (best_value, bound)
+        )
+        return float(optimize.brentq(excess, low_x, high_x, xtol=1e-15))
+
+    return Fit(low=cross(_RATE_FLOOR), best=best_value, high=cross(_RATE_CEIL))
+
+
+def fit_leppr_and_spam(
+    num_rounds: npt.NDArray[np.int_] | Sequence[int],
+    num_fails: npt.NDArray[np.int_] | Sequence[int],
+    num_shots: npt.NDArray[np.int_] | Sequence[int],
+    *,
+    num_sigmas: float = 1.0,
+) -> tuple[Fit, Fit]:
+    """Fit the per-round error and SPAM error with asymmetric intervals.
+
+    The model ``LEP(r) = (1 - (1 - 2 spam)(1 - 2 eps) ** r) / 2`` is fitted to the
+    raw counts by maximum binomial likelihood, and each parameter is profiled to
+    get an asymmetric confidence interval. ``num_sigmas = 1`` corresponds to a
+    chi-square = 1 interval.
+
+    Args:
+        num_rounds: Number of QEC rounds for each measured point.
+        num_fails: Number of logical failures observed at each round count.
+        num_shots: Number of shots at each round count.
+        num_sigmas: Width of the interval, in sigmas.
+
+    Returns:
+        ``(leppr_fit, spam_fit)`` as :class:`Fit` instances.
+
+    Raises:
+        ValueError: If the inputs have different lengths.
+    """
+    rounds = np.asarray(num_rounds, dtype=np.float64)
+    fails = np.asarray(num_fails, dtype=np.int_)
+    shots = np.asarray(num_shots, dtype=np.int_)
+    if not len(rounds) == len(fails) == len(shots):
+        msg = "num_rounds, num_fails and num_shots must have the same length."
+        raise ValueError(msg)
+
+    lep = fails / shots
+    eps_guess = float(
+        np.clip(np.mean(lep / np.maximum(rounds, 1)), _RATE_FLOOR, _RATE_CEIL)
+    )
+    spam_guess = float(np.clip(lep[0] if lep.size else 0.0, _RATE_FLOOR, _RATE_CEIL))
+    eps_best, spam_best = _best_fit(rounds, fails, shots, eps_guess, spam_guess)
+
+    leppr_fit = _profile_interval(0, eps_best, rounds, fails, shots, num_sigmas)
+    spam_fit = _profile_interval(1, spam_best, rounds, fails, shots, num_sigmas)
+    return leppr_fit, spam_fit

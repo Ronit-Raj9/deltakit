@@ -8,8 +8,18 @@ from deltakit_explorer.analysis import (
     calculate_lep_asymmetric,
     fit_binomial,
     fit_binomial_batch,
+    fit_leppr_and_spam,
     log_binomial,
 )
+
+
+def _model_counts(
+    eps: float, spam: float, rounds: list[int], shots: int
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    rounds_arr = np.asarray(rounds)
+    fidelity = (1 - 2 * spam) * (1 - 2 * eps) ** rounds_arr
+    fails = np.round((1 - fidelity) / 2 * shots).astype(int)
+    return rounds_arr, fails, np.full(len(rounds), shots)
 
 
 class TestLogBinomial:
@@ -113,3 +123,26 @@ class TestCalculateLepAsymmetric:
     def test_negative_fails_raise(self) -> None:
         with pytest.raises(ValueError):
             calculate_lep_asymmetric([-1], [1000])
+
+
+class TestFitLepprAndSpam:
+    def test_recovers_true_rate(self) -> None:
+        rounds, fails, shots = _model_counts(0.05, 0.01, [2, 6, 10, 14], 200_000)
+        leppr, spam = fit_leppr_and_spam(rounds, fails, shots)
+        assert leppr.best == pytest.approx(0.05, rel=0.05)
+        assert spam.best == pytest.approx(0.01, rel=0.3)
+
+    def test_brackets_and_non_negative(self) -> None:
+        rounds, fails, shots = _model_counts(1e-6, 1e-7, [2, 6, 10, 14], 1_000_000)
+        leppr, spam = fit_leppr_and_spam(rounds, fails, shots)
+        for fit in (leppr, spam):
+            assert 0 <= fit.low <= fit.best <= fit.high
+
+    def test_asymmetric_in_rare_regime(self) -> None:
+        rounds, fails, shots = _model_counts(1e-6, 1e-7, [2, 6, 10, 14], 1_000_000)
+        leppr, _ = fit_leppr_and_spam(rounds, fails, shots)
+        assert leppr.lower_margin != pytest.approx(leppr.upper_margin, rel=0.2)
+
+    def test_length_mismatch_raises(self) -> None:
+        with pytest.raises(ValueError):
+            fit_leppr_and_spam([2, 4], [1], [1000])

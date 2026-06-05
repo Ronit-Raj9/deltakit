@@ -10,17 +10,20 @@ from deltakit_explorer.analysis._binomial_fit import (
     Fit,
     fit_binomial,
     fit_binomial_batch,
+    fit_leppr_and_spam,
     log_binomial,
 )
 from deltakit_explorer.analysis._lambda import (
     LambdaData,
     calculate_lambda_and_lambda_stddev,
+    calculate_lambda_asymmetric,
 )
 from deltakit_explorer.analysis._leppr import (
     LogicalErrorProbabilityPerRoundData,
     calculate_lep_and_lep_stddev,
     calculate_lep_asymmetric,
     compute_logical_error_per_round,
+    compute_logical_error_per_round_asymmetric,
     simulate_different_round_numbers_for_lep_per_round_estimation,
 )
 from deltakit_explorer.analysis._quops import (

@@ -9,6 +9,8 @@ import numpy as np
 import numpy.typing as npt
 import scipy.optimize
 
+from deltakit_explorer.analysis._binomial_fit import Fit
+
 
 @dataclass(frozen=True)
 class LambdaData:
@@ -36,6 +38,13 @@ class LambdaData:
         distances: An array of code distances.
         leppr: An array for leppr computed for all code distances.
         leppr_std: An array for leppr standard deviation computed for all code distances.
+        lambda_low: Lower bound of Λ. Only set by
+            :func:`calculate_lambda_asymmetric`, otherwise None.
+        lambda_high: Upper bound of Λ, or None.
+        lambda0_low: Lower bound of Λ₀, or None.
+        lambda0_high: Upper bound of Λ₀, or None.
+        leppr_low: Per-distance lower bounds of the leppr, or None.
+        leppr_high: Per-distance upper bounds of the leppr, or None.
 
     Note:
         This class maintains the invariant that the lengths for 'distances', 'leppr' and 'leppr_std'
@@ -49,6 +58,12 @@ class LambdaData:
     distances: npt.NDArray[np.int_]
     leppr: npt.NDArray[np.float64]
     leppr_std: npt.NDArray[np.float64]
+    lambda_low: float | None = None
+    lambda_high: float | None = None
+    lambda0_low: float | None = None
+    lambda0_high: float | None = None
+    leppr_low: npt.NDArray[np.float64] | None = None
+    leppr_high: npt.NDArray[np.float64] | None = None
 
     def __post_init__(self) -> None:
         if not (len(self.distances) == len(self.leppr) == len(self.leppr_std)):
@@ -379,3 +394,148 @@ def calculate_lambda_and_lambda_stddev(
             "lambda. Please use distance 5 as a minimum.",
         )
     return lambda_fit
+
+
+def _profile_scalar(
+    cost: Callable[[float], float], best: float, num_sigmas: float
+) -> Fit:
+    """Profile a 1-D cost outward from ``best`` to a chi-square = num_sigmas**2 rise."""
+    target = cost(best) + 0.5 * num_sigmas**2
+
+    def excess(value: float) -> float:
+        return cost(value) - target
+
+    def walk(direction: int) -> float:
+        step = direction * (abs(best) * 0.5 + 1e-3)
+        for _ in range(200):
+            candidate = best + step
+            if excess(candidate) >= 0:
+                low_x, high_x = sorted((best, candidate))
+                return float(scipy.optimize.brentq(excess, low_x, high_x))
+            step *= 2
+        return best + step
+
+    return Fit(low=walk(-1), best=best, high=walk(1))
+
+
+def _asymmetric_line_fit(
+    x: npt.NDArray[np.float64],
+    y: npt.NDArray[np.float64],
+    sigma_low: npt.NDArray[np.float64],
+    sigma_high: npt.NDArray[np.float64],
+    num_sigmas: float,
+) -> tuple[Fit, Fit]:
+    """Fit ``y = offset + slope * x`` with per-point asymmetric Gaussian errors.
+
+    The residual is scaled by the upper error where the model lies above the data
+    point and by the lower error where it lies below, then the slope and offset
+    are each profiled for an asymmetric interval.
+    """
+
+    def cost(slope: float, offset: float) -> float:
+        residual = offset + slope * x - y
+        sigma = np.where(residual >= 0, sigma_high, sigma_low)
+        return 0.5 * float(np.sum((residual / sigma) ** 2))
+
+    def objective(params: npt.NDArray[np.float64]) -> float:
+        return cost(float(params[0]), float(params[1]))
+
+    slope0, offset0 = np.polyfit(x, y, 1)
+    best = scipy.optimize.minimize(
+        objective, x0=np.array([slope0, offset0]), method="Nelder-Mead"
+    )
+    slope_best, offset_best = float(best.x[0]), float(best.x[1])
+
+    def cost_at_slope(slope: float) -> float:
+        result = scipy.optimize.minimize_scalar(lambda o: cost(slope, o))
+        return float(result.fun)
+
+    def cost_at_offset(offset: float) -> float:
+        result = scipy.optimize.minimize_scalar(lambda s: cost(s, offset))
+        return float(result.fun)
+
+    slope_fit = _profile_scalar(cost_at_slope, slope_best, num_sigmas)
+    offset_fit = _profile_scalar(cost_at_offset, offset_best, num_sigmas)
+    return slope_fit, offset_fit
+
+
+def calculate_lambda_asymmetric(
+    distances: npt.NDArray[np.int_] | Sequence[int],
+    leppr: npt.NDArray[np.float64] | Sequence[float],
+    leppr_low: npt.NDArray[np.float64] | Sequence[float],
+    leppr_high: npt.NDArray[np.float64] | Sequence[float],
+    *,
+    num_sigmas: float = 1.0,
+) -> LambdaData:
+    """Estimate Λ and Λ₀ with asymmetric confidence intervals.
+
+    This is the asymmetric counterpart to :func:`calculate_lambda_and_lambda_stddev`.
+    It takes the per-distance leppr together with its lower and upper bounds (for
+    example from :func:`compute_logical_error_per_round_asymmetric`) and fits
+    ``ln(leppr)`` against ``(d + 1) / 2`` with asymmetric errors, which is the
+    same linear model as the ``LIN`` method. ``Λ = exp(-slope)`` and
+    ``Λ₀ = exp(-offset)``, so both intervals stay strictly positive.
+
+    Args:
+        distances: Code distances.
+        leppr: Per-distance logical error probability per round.
+        leppr_low: Per-distance lower bound of the leppr.
+        leppr_high: Per-distance upper bound of the leppr.
+        num_sigmas: Width of the interval, in sigmas.
+
+    Returns:
+        LambdaData with the symmetric values populated from the standard fit and
+        the asymmetric bounds populated.
+
+    Raises:
+        ValueError: When the input arrays do not match lengths.
+    """
+    distances = np.asarray(distances)
+    leppr = np.asarray(leppr, dtype=np.float64)
+    leppr_low = np.asarray(leppr_low, dtype=np.float64)
+    leppr_high = np.asarray(leppr_high, dtype=np.float64)
+    if not (len(distances) == len(leppr) == len(leppr_low) == len(leppr_high)):
+        msg = "Input data do not match lengths."
+        raise ValueError(msg)
+
+    order = np.argsort(distances)
+    distances, leppr = distances[order], leppr[order]
+    leppr_low, leppr_high = leppr_low[order], leppr_high[order]
+
+    # Central values and a symmetric standard deviation (half the interval width)
+    # come from the established fit, so existing consumers keep working.
+    central = calculate_lambda_and_lambda_stddev(
+        distances, leppr, (leppr_high - leppr_low) / 2
+    )
+
+    # Asymmetric fit in log space. The lower/upper leppr bounds become the lower/
+    # upper errors on ln(leppr); a bound of zero leaves that side unconstrained.
+    x = (distances + 1) / 2
+    log_leppr = np.log(leppr)
+    sigma_low = log_leppr - np.log(np.maximum(leppr_low, 1e-300))
+    sigma_high = np.log(leppr_high) - log_leppr
+    slope_fit, offset_fit = _asymmetric_line_fit(
+        x, log_leppr, sigma_low, sigma_high, num_sigmas
+    )
+
+    # Λ = exp(-slope) is decreasing in the slope, so the bounds swap over.
+    lambda_low = float(np.exp(-slope_fit.high))
+    lambda_high = float(np.exp(-slope_fit.low))
+    lambda0_low = float(np.exp(-offset_fit.high))
+    lambda0_high = float(np.exp(-offset_fit.low))
+
+    return LambdaData(
+        lambda_=central.lambda_,
+        lambda_std=central.lambda_std,
+        lambda0=central.lambda0,
+        lambda0_std=central.lambda0_std,
+        distances=distances,
+        leppr=leppr,
+        leppr_std=central.leppr_std,
+        lambda_low=lambda_low,
+        lambda_high=lambda_high,
+        lambda0_low=lambda0_low,
+        lambda0_high=lambda0_high,
+        leppr_low=leppr_low,
+        leppr_high=leppr_high,
+    )
