@@ -7,6 +7,12 @@ import numpy as np
 import numpy.typing as npt
 from scipy.optimize import curve_fit
 
+from deltakit_explorer.analysis._propagation import (
+    epsilon_and_spam_from_log_fit,
+    leppr_from_single_point,
+    log_fidelity_stddev,
+)
+
 
 @dataclass(frozen=True)
 class LogicalErrorProbabilityPerRoundData:
@@ -167,9 +173,8 @@ def compute_logical_error_per_round(
         lep_stddev = float(logical_error_probabilities_stddev[0])
         # Implement Eq. (4) from section A.2.2. at page 40 of
         # https://arxiv.org/pdf/2310.05900.
-        estimated_logical_error_per_round = (1 - (1 - 2 * lep) ** (1 / rounds)) / 2
-        estimated_logical_error_per_round_stddev = (
-            lep_stddev * (1 - 2 * lep) ** (1 / rounds - 1) / rounds
+        estimated_logical_error_per_round, estimated_logical_error_per_round_stddev = (
+            leppr_from_single_point(lep, lep_stddev, rounds)
         )
         return LogicalErrorProbabilityPerRoundData(
             leppr=estimated_logical_error_per_round,
@@ -199,9 +204,9 @@ def compute_logical_error_per_round(
     # variance of each observation.
     # See https://en.wikipedia.org/wiki/Weighted_least_squares.
     logfidelity = np.log(fidelities)
-    # We approximate the standard deviation with an error propagation analysis. This
-    # method has been tested against scipy and returns similar results.
-    logfidelities_stddev = 2 * logical_error_probabilities_stddev / fidelities
+    logfidelities_stddev = log_fidelity_stddev(
+        logical_error_probabilities, logical_error_probabilities_stddev
+    )
 
     # Note that the covariance matrix is used later to estimate the logical error
     # probability per round standard deviation.
@@ -225,7 +230,6 @@ def compute_logical_error_per_round(
         # bounds=((-numpy.inf, -numpy.inf), (numpy.log(1), numpy.log(1))),
     )
 
-    estimated_logical_error_per_round = float((1 - np.exp(slope)) / 2)
     # Compute the standard R2 (Coefficient of determination) using the formula
     # ``R2 = 1 - SSE / SST`` where SSE is the Sum of Squares Error and SST is the Sum of
     # Square Total that are computed below.
@@ -239,20 +243,10 @@ def compute_logical_error_per_round(
             "this warning."
         )
 
-    # Following https://arxiv.org/pdf/2505.09684v1 (Methods - Extracting logical error
-    # per cycle, page 8) we estimate the variance on the logical error probability per
-    # round (named Perrc below) using the formula
-    #      sigma(Perrc) = (1 - Perrc) * sigma(slope)
-    # The standard deviation on the linear fit parameters can be obtained through the
-    # covariance matrix diagonal entries.
-    slope_stddev, offset_stddev = np.sqrt(np.diagonal(cov))
-    estimated_logical_error_per_round_stddev = float(
-        (1 - 2 * estimated_logical_error_per_round) * slope_stddev / 2
-    )
-    estimated_spam_error = float((1 - np.exp(offset)) / 2)
-    estimated_spam_error_stddev = float(
-        (1 - 2 * estimated_spam_error) * offset_stddev / 2
-    )
+    (estimated_logical_error_per_round, estimated_logical_error_per_round_stddev), (
+        estimated_spam_error,
+        estimated_spam_error_stddev,
+    ) = epsilon_and_spam_from_log_fit(slope, offset, cov)
     return LogicalErrorProbabilityPerRoundData(
         leppr=estimated_logical_error_per_round,
         leppr_stddev=estimated_logical_error_per_round_stddev,
@@ -414,6 +408,8 @@ def calculate_lep_and_lep_stddev(
     if np.any(fails <= 0) or np.any(shots <= 0):
         msg = "Both `fail` and `shots` must be strictly positive entries to calculate the logical error probability."
         raise ValueError(msg)
+    # Wald approximation for binomial LEP; asymmetric intervals are tracked separately
+    # (see issue #134).
     lep = fails / shots
     lep_stddev = np.sqrt(lep * (1 - lep) / shots)
     return lep, lep_stddev
