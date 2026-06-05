@@ -28,9 +28,7 @@ def _legacy_leppr_from_single_point(
     return leppr, leppr_stddev
 
 
-def _legacy_log_fidelity_stddev(
-    lep: np.ndarray, lep_stddev: np.ndarray
-) -> np.ndarray:
+def _legacy_log_fidelity_stddev(lep: np.ndarray, lep_stddev: np.ndarray) -> np.ndarray:
     fidelities = 1 - 2 * lep
     return 2 * lep_stddev / fidelities
 

@@ -115,9 +115,7 @@ def _approximate_derivative_at_point_from_values(
     # and ``cov[i,i]`` is the variance of ``coefficients[i]``).
     coefficients, cov = np.flip(coefficients), np.flip(cov)
 
-    return polynomial_derivative_stddev(
-        coefficients, cov, gradient_approximation_point
-    )
+    return polynomial_derivative_stddev(coefficients, cov, gradient_approximation_point)
 
 
 def generate_sweep_parameters(
@@ -256,9 +254,7 @@ def get_lambda_gradient(
         sweep_noise_parameters, noise_parameter_names, num_rounds_by_distances, report
     )
     lambda_reciprocals = 1 / lambdas
-    lambda_reciprocal_stddevs = np.vectorize(reciprocal_stddev)(
-        lambdas, lambda_stddevs
-    )
+    lambda_reciprocal_stddevs = np.vectorize(reciprocal_stddev)(lambdas, lambda_stddevs)
 
     # We now have all the estimations of 1 / Λ, we can approximate the gradient
     # Note that ``noise_parameters``, ``lambda_reciprocals`` and

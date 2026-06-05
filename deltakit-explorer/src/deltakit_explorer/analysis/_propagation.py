@@ -34,7 +34,9 @@ def _uncertain_from_covariance(
     return list(correlated_values(nominal, cov))
 
 
-def leppr_from_single_point(lep: float, lep_stddev: float, rounds: int) -> tuple[float, float]:
+def leppr_from_single_point(
+    lep: float, lep_stddev: float, rounds: int
+) -> tuple[float, float]:
     """Propagate uncertainty for single-point LEPPR (Eq. 4, arXiv:2310.05900).
 
     Args:
@@ -89,9 +91,7 @@ def epsilon_and_spam_from_log_fit(
     Returns:
         ``((leppr, leppr_stddev), (spam_error, spam_error_stddev))``.
     """
-    uncertain_slope, uncertain_offset = _uncertain_from_covariance(
-        [slope, offset], cov
-    )
+    uncertain_slope, uncertain_offset = _uncertain_from_covariance([slope, offset], cov)
     uncertain_leppr = (1 - uexp(uncertain_slope)) / 2
     uncertain_spam = (1 - uexp(uncertain_offset)) / 2
     return _nominal_and_std(uncertain_leppr), _nominal_and_std(uncertain_spam)
@@ -112,9 +112,7 @@ def lambda_from_shifted_fit(
     Returns:
         ``((lambda_, lambda_std), (lambda0, lambda0_std))``.
     """
-    uncertain_slope, uncertain_offset = _uncertain_from_covariance(
-        [slope, offset], cov
-    )
+    uncertain_slope, uncertain_offset = _uncertain_from_covariance([slope, offset], cov)
     uncertain_lambda = uexp(-2 * uncertain_slope)
     uncertain_lambda0 = uexp(-uncertain_offset - ulog(uncertain_lambda) / 2)
     return _nominal_and_std(uncertain_lambda), _nominal_and_std(uncertain_lambda0)
@@ -135,9 +133,7 @@ def lambda_from_lin_fit(
     Returns:
         ``((lambda_, lambda_std), (lambda0, lambda0_std))``.
     """
-    uncertain_slope, uncertain_offset = _uncertain_from_covariance(
-        [slope, offset], cov
-    )
+    uncertain_slope, uncertain_offset = _uncertain_from_covariance([slope, offset], cov)
     uncertain_lambda = uexp(-uncertain_slope)
     uncertain_lambda0 = uexp(-uncertain_offset)
     return _nominal_and_std(uncertain_lambda), _nominal_and_std(uncertain_lambda0)

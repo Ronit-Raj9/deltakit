@@ -243,9 +243,12 @@ def compute_logical_error_per_round(
             "this warning."
         )
 
-    (estimated_logical_error_per_round, estimated_logical_error_per_round_stddev), (
-        estimated_spam_error,
-        estimated_spam_error_stddev,
+    (
+        (estimated_logical_error_per_round, estimated_logical_error_per_round_stddev),
+        (
+            estimated_spam_error,
+            estimated_spam_error_stddev,
+        ),
     ) = epsilon_and_spam_from_log_fit(slope, offset, cov)
     return LogicalErrorProbabilityPerRoundData(
         leppr=estimated_logical_error_per_round,

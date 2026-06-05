@@ -91,8 +91,6 @@ def inverse_lambda_at(
         point, noise_parameter_names, num_rounds_by_distances, report
     )
     lambda_reciprocals = 1 / lambdas
-    lambda_reciprocal_stddevs = np.vectorize(reciprocal_stddev)(
-        lambdas, lambda_stddevs
-    )
+    lambda_reciprocal_stddevs = np.vectorize(reciprocal_stddev)(lambdas, lambda_stddevs)
 
     return float(lambda_reciprocals[0, 0]), float(lambda_reciprocal_stddevs[0, 0])

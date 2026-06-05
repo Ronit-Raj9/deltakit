@@ -132,9 +132,12 @@ def _lambda_shifted_fit(
         full=False,
         cov="unscaled",
     )
-    (estimated_lambda, estimated_lambda_std), (
-        estimated_lambda0,
-        estimated_lambda0_std,
+    (
+        (estimated_lambda, estimated_lambda_std),
+        (
+            estimated_lambda0,
+            estimated_lambda0_std,
+        ),
     ) = lambda_from_shifted_fit(slope, offset, cov)
     return LambdaData(
         lambda_=estimated_lambda,
@@ -198,9 +201,12 @@ def _lambda_lin_fit(
         full=False,
         cov="unscaled",
     )
-    (estimated_lambda, estimated_lambda_std), (
-        estimated_lambda0,
-        estimated_lambda0_std,
+    (
+        (estimated_lambda, estimated_lambda_std),
+        (
+            estimated_lambda0,
+            estimated_lambda0_std,
+        ),
     ) = lambda_from_lin_fit(slope, offset, cov)
     return LambdaData(
         lambda_=estimated_lambda,
