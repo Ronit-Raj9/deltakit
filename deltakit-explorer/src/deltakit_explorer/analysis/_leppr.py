@@ -7,6 +7,11 @@ import numpy as np
 import numpy.typing as npt
 from scipy.optimize import curve_fit
 
+from deltakit_explorer.analysis._binomial_fit import (
+    DEFAULT_MAX_LIKELIHOOD_FACTOR,
+    fit_binomial_batch,
+)
+
 
 @dataclass(frozen=True)
 class LogicalErrorProbabilityPerRoundData:
@@ -417,3 +422,49 @@ def calculate_lep_and_lep_stddev(
     lep = fails / shots
     lep_stddev = np.sqrt(lep * (1 - lep) / shots)
     return lep, lep_stddev
+
+
+def calculate_lep_asymmetric(
+    fails: npt.NDArray[np.int_] | Sequence[int] | int,
+    shots: npt.NDArray[np.int_] | Sequence[int] | int,
+    *,
+    max_likelihood_factor: float = DEFAULT_MAX_LIKELIHOOD_FACTOR,
+) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+    """Calculate the logical error probability with an asymmetric interval.
+
+    This is the binomial counterpart to :func:`calculate_lep_and_lep_stddev`. It
+    returns the best estimate together with lower and upper bounds that follow
+    the shape of the binomial likelihood, so the lower bound never drops below
+    zero and the upper tail is not understated when the error rate is small.
+
+    Args:
+        fails: The number of logical failures. Zero is allowed here.
+        shots: The number of shots the experiment was run for.
+        max_likelihood_factor: How much less likely than the best fit a rate may
+            be before it is excluded from the interval.
+
+    Returns:
+        Three arrays ``(low, best, high)`` giving, per point, the lower bound,
+        the maximum-likelihood estimate and the upper bound.
+
+    Raises:
+        ValueError: When inputs do not match lengths or contain negative entries.
+
+    Examples:
+        >>> low, lep, high = analysis.calculate_lep_asymmetric(
+        ...     fails=[2, 151, 34],
+        ...     shots=[500000] * 3,
+        ... )
+    """
+    fails = np.asarray([fails]) if isinstance(fails, int) else np.asarray(fails)
+    shots = np.asarray([shots]) if isinstance(shots, int) else np.asarray(shots)
+    if len(fails) != len(shots):
+        msg = "Input data do not match lengths."
+        raise ValueError(msg)
+    if np.any(fails < 0) or np.any(shots <= 0):
+        msg = "`fails` must be non-negative and `shots` strictly positive."
+        raise ValueError(msg)
+    low, best, high = fit_binomial_batch(
+        shots, fails, max_likelihood_factor=max_likelihood_factor
+    )
+    return low, best, high

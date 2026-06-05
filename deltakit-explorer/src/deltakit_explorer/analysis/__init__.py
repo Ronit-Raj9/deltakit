@@ -5,6 +5,13 @@ from deltakit_explorer.analysis._analysis import (
     get_exp_fit,
     get_lambda_fit,
 )
+from deltakit_explorer.analysis._binomial_fit import (
+    DEFAULT_MAX_LIKELIHOOD_FACTOR,
+    Fit,
+    fit_binomial,
+    fit_binomial_batch,
+    log_binomial,
+)
 from deltakit_explorer.analysis._lambda import (
     LambdaData,
     calculate_lambda_and_lambda_stddev,
@@ -12,6 +19,7 @@ from deltakit_explorer.analysis._lambda import (
 from deltakit_explorer.analysis._leppr import (
     LogicalErrorProbabilityPerRoundData,
     calculate_lep_and_lep_stddev,
+    calculate_lep_asymmetric,
     compute_logical_error_per_round,
     simulate_different_round_numbers_for_lep_per_round_estimation,
 )
