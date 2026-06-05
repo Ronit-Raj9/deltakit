@@ -241,14 +241,24 @@ def interpolate_lambda(
         lambda_data.distances[0], lambda_data.distances[-1], num_points
     ).reshape(1, num_points)
 
-    # Λ and Λ₀ are exponentials of the fit parameters, so the confidence band is
-    # multiplicative rather than symmetric.
-    lambda_low, lambda_high = _suppression_band(
-        lambda_data.lambda_, lambda_data.lambda_std, num_sigmas
-    )
-    lambda0_low, lambda0_high = _suppression_band(
-        lambda_data.lambda0, lambda_data.lambda0_std, num_sigmas
-    )
+    # Use the bounds from an asymmetric fit if they are available, otherwise
+    # build a multiplicative band from the symmetric standard deviations (Λ and Λ₀
+    # are exponentials of the fit parameters, so the band is not symmetric).
+    if (
+        lambda_data.lambda_low is not None
+        and lambda_data.lambda_high is not None
+        and lambda_data.lambda0_low is not None
+        and lambda_data.lambda0_high is not None
+    ):
+        lambda_low, lambda_high = lambda_data.lambda_low, lambda_data.lambda_high
+        lambda0_low, lambda0_high = lambda_data.lambda0_low, lambda_data.lambda0_high
+    else:
+        lambda_low, lambda_high = _suppression_band(
+            lambda_data.lambda_, lambda_data.lambda_std, num_sigmas
+        )
+        lambda0_low, lambda0_high = _suppression_band(
+            lambda_data.lambda0, lambda_data.lambda0_std, num_sigmas
+        )
 
     # The error probability decreases with both Λ and Λ₀, so the largest factors
     # give the lower boundary of the band and the smallest give the upper one.
@@ -326,13 +336,24 @@ def interpolate_leppr(
     # Build asymmetric bands for the SPAM error and the per-round error, then
     # combine them through the fidelity model. Both bands are ordered
     # (low, best, high), and the experiment error grows with both quantities, so
-    # the first row gives the lower boundary and the last row the upper one.
-    spam_low, spam_high = _error_rate_band(
-        leppr_data.spam_error, leppr_data.spam_error_stddev, num_sigmas
-    )
-    leppr_low, leppr_high = _error_rate_band(
-        leppr_data.leppr, leppr_data.leppr_stddev, num_sigmas
-    )
+    # the first row gives the lower boundary and the last row the upper one. The
+    # bounds from an asymmetric fit are used when available, otherwise they are
+    # derived from the symmetric standard deviations.
+    if (
+        leppr_data.leppr_low is not None
+        and leppr_data.leppr_high is not None
+        and leppr_data.spam_error_low is not None
+        and leppr_data.spam_error_high is not None
+    ):
+        spam_low, spam_high = leppr_data.spam_error_low, leppr_data.spam_error_high
+        leppr_low, leppr_high = leppr_data.leppr_low, leppr_data.leppr_high
+    else:
+        spam_low, spam_high = _error_rate_band(
+            leppr_data.spam_error, leppr_data.spam_error_stddev, num_sigmas
+        )
+        leppr_low, leppr_high = _error_rate_band(
+            leppr_data.leppr, leppr_data.leppr_stddev, num_sigmas
+        )
     spam_vals = np.array([spam_low, leppr_data.spam_error, spam_high]).reshape(3, 1)
     leppr_vals = np.array([leppr_low, leppr_data.leppr, leppr_high]).reshape(3, 1)
 

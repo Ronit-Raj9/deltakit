@@ -6,7 +6,7 @@ from matplotlib.figure import Figure
 
 from deltakit_explorer.analysis import LambdaData
 from deltakit_explorer.plotting.plotting import plot
-from deltakit_explorer.plotting.results import interpolate_lambda
+from deltakit_explorer.plotting.results import _error_rate_band, interpolate_lambda
 
 
 def plot_lambda(
@@ -62,13 +62,20 @@ def plot_lambda(
     assert ax is not None
     assert fig is not None
 
-    # Plot the logical error probabilities per round. The bars are made
-    # asymmetric through the fidelity 1 - 2*leppr so they do not reach below zero
-    # when the rate is small.
-    fidelity = 1 - 2 * np.asarray(lambda_data.leppr)
-    sigma_log = 2 * np.asarray(lambda_data.leppr_std) / fidelity
-    leppr_low = (1 - fidelity * np.exp(num_sigmas * sigma_log)) / 2
-    leppr_high = (1 - fidelity * np.exp(-num_sigmas * sigma_log)) / 2
+    # Plot the logical error probabilities per round with asymmetric bars. The
+    # per-distance bounds from an asymmetric fit are used when available,
+    # otherwise they are derived from the symmetric standard deviation so that the
+    # bars still do not reach below zero.
+    if lambda_data.leppr_low is not None and lambda_data.leppr_high is not None:
+        leppr_low = np.asarray(lambda_data.leppr_low)
+        leppr_high = np.asarray(lambda_data.leppr_high)
+    else:
+        bounds = [
+            _error_rate_band(error, stddev, num_sigmas)
+            for error, stddev in zip(lambda_data.leppr, lambda_data.leppr_std)
+        ]
+        leppr_low = np.array([low for low, _ in bounds])
+        leppr_high = np.array([high for _, high in bounds])
     yerr = np.clip(
         np.vstack((lambda_data.leppr - leppr_low, leppr_high - lambda_data.leppr)),
         0,

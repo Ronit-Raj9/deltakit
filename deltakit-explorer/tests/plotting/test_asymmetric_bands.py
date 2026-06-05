@@ -7,8 +7,10 @@ import pytest
 
 from deltakit_explorer.analysis import (
     calculate_lambda_and_lambda_stddev,
+    calculate_lambda_asymmetric,
     calculate_lep_and_lep_stddev,
     compute_logical_error_per_round,
+    compute_logical_error_per_round_asymmetric,
 )
 from deltakit_explorer.plotting import (
     interpolate_lambda,
@@ -92,3 +94,47 @@ class TestPlotsRun:
     def test_lambda_plot_runs(self, lambda_data):
         fig, _ = plot_lambda(lambda_data)
         assert fig is not None
+
+
+def _model_counts(eps, spam, rounds, shots):
+    rounds_arr = np.asarray(rounds)
+    fidelity = (1 - 2 * spam) * (1 - 2 * eps) ** rounds_arr
+    fails = np.round((1 - fidelity) / 2 * shots).astype(int)
+    return rounds_arr, fails, np.full(len(rounds), shots)
+
+
+class TestAsymmetricFitPipeline:
+    def test_leppr_fit_populates_bounds(self):
+        rounds, fails, shots = _model_counts(0.02, 0.005, [2, 6, 10, 14], 500_000)
+        data = compute_logical_error_per_round_asymmetric(rounds, fails, shots)
+        assert data.leppr_low is not None
+        assert data.leppr_low <= data.leppr <= data.leppr_high
+        assert data.leppr_low >= 0
+
+    def test_leppr_band_uses_fit_bounds(self):
+        rounds, fails, shots = _model_counts(1e-6, 1e-7, [2, 6, 10, 14], 1_000_000)
+        data = compute_logical_error_per_round_asymmetric(rounds, fails, shots)
+        result = interpolate_leppr(data)
+        assert np.all(result.lower_boundary <= result.interpolated)
+        assert np.all(result.interpolated <= result.upper_boundary)
+
+    def test_lambda_fit_recovers_value(self):
+        lambda_true, lambda0_true = 3.0, 2.0
+        distances = [3, 5, 7, 9]
+        rounds = np.array([2, 6, 10, 14])
+        leppr, low, high = [], [], []
+        for d in distances:
+            eps_d = lambda_true ** (-(d + 1) / 2) / lambda0_true
+            r, fails, shots = _model_counts(eps_d, 0.005, rounds, 1_000_000)
+            data = compute_logical_error_per_round_asymmetric(r, fails, shots)
+            leppr.append(data.leppr)
+            low.append(data.leppr_low)
+            high.append(data.leppr_high)
+        result = calculate_lambda_asymmetric(distances, leppr, low, high)
+        assert result.lambda_ == pytest.approx(lambda_true, rel=0.05)
+        assert result.lambda_low <= result.lambda_ <= result.lambda_high
+        assert result.lambda_low > 0
+
+    def test_lambda_asymmetric_length_mismatch_raises(self):
+        with pytest.raises(ValueError):
+            calculate_lambda_asymmetric([3, 5], [0.1], [0.09], [0.11])
