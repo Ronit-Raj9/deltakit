@@ -8,16 +8,20 @@ from deltakit_explorer.analysis import (
     calculate_lep_and_lep_stddev,
     compute_logical_error_per_round,
 )
-from deltakit_explorer.analysis._propagation import (
-    epsilon_and_spam_from_log_fit,
+from deltakit_explorer.analysis._lambda import (
     lambda_from_curve_fit,
     lambda_from_lin_fit,
     lambda_from_shifted_fit,
+)
+from deltakit_explorer.analysis._leppr import (
+    epsilon_and_spam_from_log_fit,
     leppr_from_single_point,
     log_fidelity_stddev,
-    polynomial_derivative_stddev,
-    reciprocal_stddev,
 )
+from deltakit_explorer.analysis.error_budget._gradient import (
+    polynomial_derivative_stddev,
+)
+from deltakit_explorer.analysis.error_budget._lambda import reciprocal_stddev
 
 
 def _legacy_leppr_from_single_point(

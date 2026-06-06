@@ -8,12 +8,88 @@ from enum import Enum
 import numpy as np
 import numpy.typing as npt
 import scipy.optimize
+from uncertainties import correlated_values
+from uncertainties.umath import exp as uexp
+from uncertainties.umath import log as ulog
 
-from deltakit_explorer.analysis._propagation import (
-    lambda_from_curve_fit,
-    lambda_from_lin_fit,
-    lambda_from_shifted_fit,
-)
+
+def lambda_from_shifted_fit(
+    slope: float,
+    offset: float,
+    cov: npt.NDArray[np.floating],
+) -> tuple[tuple[float, float], tuple[float, float]]:
+    """Error suppression factors from a shifted-distance linear fit.
+
+    Recovers ``Λ = exp(-2 · slope)`` and ``Λ₀ = exp(-offset - ln(Λ)/2)``, with
+    standard deviations propagated from the fit covariance matrix using the
+    ``uncertainties`` package (see
+    https://en.wikipedia.org/wiki/Propagation_of_uncertainty#Example_formulae).
+
+    Args:
+        slope: Slope from the shifted linear fit.
+        offset: Offset from the shifted linear fit.
+        cov: Covariance matrix of the fit parameters.
+
+    Returns:
+        ``((lambda_, lambda_std), (lambda0, lambda0_std))``.
+    """
+    uncertain_slope, uncertain_offset = correlated_values([slope, offset], cov)
+    uncertain_lambda = uexp(-2 * uncertain_slope)
+    uncertain_lambda0 = uexp(-uncertain_offset - ulog(uncertain_lambda) / 2)
+    return (
+        (float(uncertain_lambda.nominal_value), float(uncertain_lambda.std_dev)),
+        (float(uncertain_lambda0.nominal_value), float(uncertain_lambda0.std_dev)),
+    )
+
+
+def lambda_from_lin_fit(
+    slope: float,
+    offset: float,
+    cov: npt.NDArray[np.floating],
+) -> tuple[tuple[float, float], tuple[float, float]]:
+    """Error suppression factors from a ``(d+1)/2`` linear fit.
+
+    Recovers ``Λ = exp(-slope)`` and ``Λ₀ = exp(-offset)``, with standard
+    deviations propagated from the fit covariance matrix using the
+    ``uncertainties`` package.
+
+    Args:
+        slope: Slope from the linear fit over ``(d+1)/2``.
+        offset: Offset from the linear fit over ``(d+1)/2``.
+        cov: Covariance matrix of the fit parameters.
+
+    Returns:
+        ``((lambda_, lambda_std), (lambda0, lambda0_std))``.
+    """
+    uncertain_slope, uncertain_offset = correlated_values([slope, offset], cov)
+    uncertain_lambda = uexp(-uncertain_slope)
+    uncertain_lambda0 = uexp(-uncertain_offset)
+    return (
+        (float(uncertain_lambda.nominal_value), float(uncertain_lambda.std_dev)),
+        (float(uncertain_lambda0.nominal_value), float(uncertain_lambda0.std_dev)),
+    )
+
+
+def lambda_from_curve_fit(
+    lamb0: float,
+    lamb: float,
+    cov: npt.NDArray[np.floating],
+) -> tuple[tuple[float, float], tuple[float, float]]:
+    """Error suppression factors from a non-linear ``curve_fit``.
+
+    Args:
+        lamb0: Fitted lambda prefactor.
+        lamb: Fitted error suppression factor.
+        cov: Covariance matrix of the fit parameters.
+
+    Returns:
+        ``((lambda_, lambda_std), (lambda0, lambda0_std))``.
+    """
+    uncertain_lamb0, uncertain_lamb = correlated_values([lamb0, lamb], cov)
+    return (
+        (float(uncertain_lamb.nominal_value), float(uncertain_lamb.std_dev)),
+        (float(uncertain_lamb0.nominal_value), float(uncertain_lamb0.std_dev)),
+    )
 
 
 @dataclass(frozen=True)
@@ -108,8 +184,8 @@ def _lambda_shifted_fit(
          Λ  = exp(-2 · slope)
          Λ₀ = exp(-offset - ln(Λ)/2)
 
-    Standard deviations are computed via linear error propagation (in
-    `_propagation`), following the standard formulae found in:
+    Standard deviations are propagated with the `uncertainties` package, following
+    the standard formulae found in:
     https://en.wikipedia.org/wiki/Propagation_of_uncertainty#Example_formulae
 
         (ln(Λ)/2) = Δ(Λ) / (2 · Λ)
@@ -189,8 +265,8 @@ def _lambda_lin_fit(
          Λ  = exp(-slope)
          Λ₀ = exp(-offset)
 
-    Standard deviations are computed via linear error propagation (in
-    `_propagation`), following the standard formulae found in:
+    Standard deviations are propagated with the `uncertainties` package, following
+    the standard formulae found in:
     https://en.wikipedia.org/wiki/Propagation_of_uncertainty#Example_formulae
 
         Δ(Λ)  = Λ · Δ(slope)

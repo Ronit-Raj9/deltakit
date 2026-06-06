@@ -6,12 +6,74 @@ from math import floor
 import numpy as np
 import numpy.typing as npt
 from scipy.optimize import curve_fit
+from uncertainties import correlated_values, ufloat, unumpy
+from uncertainties.umath import exp as uexp
 
-from deltakit_explorer.analysis._propagation import (
-    epsilon_and_spam_from_log_fit,
-    leppr_from_single_point,
-    log_fidelity_stddev,
-)
+
+def leppr_from_single_point(
+    lep: float, lep_stddev: float, rounds: int
+) -> tuple[float, float]:
+    """Propagate uncertainty for the single-point LEPPR (Eq. 4, arXiv:2310.05900).
+
+    Args:
+        lep: Logical error probability.
+        lep_stddev: Standard deviation of the logical error probability.
+        rounds: Number of QEC rounds.
+
+    Returns:
+        Tuple of LEPPR and its standard deviation.
+    """
+    uncertain_lep = ufloat(lep, lep_stddev)
+    leppr = (1 - (1 - 2 * uncertain_lep) ** (1 / rounds)) / 2
+    return float(leppr.nominal_value), float(leppr.std_dev)
+
+
+def log_fidelity_stddev(
+    lep: npt.NDArray[np.floating] | Sequence[float],
+    lep_stddev: npt.NDArray[np.floating] | Sequence[float],
+) -> npt.NDArray[np.float64]:
+    """Standard deviation of ``log(1 - 2*lep)`` for the weighted least-squares fit.
+
+    Args:
+        lep: Logical error probabilities.
+        lep_stddev: Standard deviation of each logical error probability.
+
+    Returns:
+        Standard deviation of log-fidelity for each input point.
+    """
+    lep_arr = np.asarray(lep, dtype=np.float64)
+    std_arr = np.asarray(lep_stddev, dtype=np.float64)
+    uncertain_log_fidelity = unumpy.log(1 - 2 * unumpy.uarray(lep_arr, std_arr))
+    return unumpy.std_devs(uncertain_log_fidelity).astype(np.float64)
+
+
+def epsilon_and_spam_from_log_fit(
+    slope: float,
+    offset: float,
+    cov: npt.NDArray[np.floating],
+) -> tuple[tuple[float, float], tuple[float, float]]:
+    """LEPPR and SPAM error from the correlated log-linear fit parameters.
+
+    Following https://arxiv.org/pdf/2505.09684v1 (Methods - Extracting logical
+    error per cycle, page 8), the per-round error and the SPAM error are recovered
+    as ``(1 - exp(slope)) / 2`` and ``(1 - exp(offset)) / 2``, with standard
+    deviations propagated from the fit covariance matrix.
+
+    Args:
+        slope: Slope from the log-fidelity linear fit.
+        offset: Offset from the log-fidelity linear fit.
+        cov: Covariance matrix of the fit parameters.
+
+    Returns:
+        ``((leppr, leppr_stddev), (spam_error, spam_error_stddev))``.
+    """
+    uncertain_slope, uncertain_offset = correlated_values([slope, offset], cov)
+    uncertain_leppr = (1 - uexp(uncertain_slope)) / 2
+    uncertain_spam = (1 - uexp(uncertain_offset)) / 2
+    return (
+        (float(uncertain_leppr.nominal_value), float(uncertain_leppr.std_dev)),
+        (float(uncertain_spam.nominal_value), float(uncertain_spam.std_dev)),
+    )
 
 
 @dataclass(frozen=True)

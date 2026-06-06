@@ -5,14 +5,12 @@ import numpy.typing as npt
 import pandas as pd
 from deltakit_circuit._circuit import Circuit
 from deltakit_decode.analysis._run_all_analysis_engine import RunAllAnalysisEngine
+from uncertainties import correlated_values
 
-from deltakit_explorer.analysis._propagation import (
-    polynomial_derivative_stddev,
-    reciprocal_stddev,
-)
 from deltakit_explorer.analysis.error_budget._generation import (
     generate_decoder_managers_for_lambda,
 )
+from deltakit_explorer.analysis.error_budget._lambda import reciprocal_stddev
 from deltakit_explorer.analysis.error_budget._memory import (
     MemoryGenerator,
     PreComputedMemoryGenerator,
@@ -25,6 +23,33 @@ from deltakit_explorer.analysis.error_budget._parameters import (
 from deltakit_explorer.analysis.error_budget._post_processing import (
     compute_lambda_and_stddev_from_results,
 )
+
+
+def polynomial_derivative_stddev(
+    coefficients: npt.NDArray[np.floating],
+    cov: npt.NDArray[np.floating],
+    point: float,
+) -> tuple[float, float]:
+    """Gradient and its standard deviation from a fitted polynomial.
+
+    The polynomial coefficients are turned into correlated ``uncertainties``
+    values using the fit covariance matrix, so the derivative's standard
+    deviation is propagated automatically.
+
+    Args:
+        coefficients: Polynomial coefficients with index matching power.
+        cov: Covariance matrix of the polynomial coefficients.
+        point: Point at which to evaluate the derivative.
+
+    Returns:
+        Tuple of the derivative value and its standard deviation.
+    """
+    uncertain_coefficients = correlated_values(coefficients, cov)
+    derivative = sum(
+        (power + 1) * coeff * point**power
+        for power, coeff in enumerate(uncertain_coefficients[1:])
+    )
+    return float(derivative.nominal_value), float(derivative.std_dev)
 
 
 def _variate_ith_parameter_by(
