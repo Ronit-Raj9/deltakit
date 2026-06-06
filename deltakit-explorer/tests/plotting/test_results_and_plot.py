@@ -6,6 +6,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pytest
 
+from deltakit_explorer.plotting import (
+    plot_lambda,
+    plot_logical_error_probability_per_round,
+)
 from deltakit_explorer.plotting.plotting import plot
 from deltakit_explorer.plotting.results import (
     LambdaResult,
@@ -122,3 +126,41 @@ class TestPlot:
     def test_plot_raises_on_unsupported_type(self):
         with pytest.raises(TypeError, match="Unsupported result type"):
             plot("invalid")
+
+
+class TestSpecialisedPlottersOwnRendering:
+    def test_plot_lambda_accepts_raw_data(self, lambda_results):
+        fig, _ = plot_lambda(lambda_results)
+        assert fig is not None
+        plt.close(fig)
+
+    def test_plot_lambda_accepts_interpolated_result(self, lambda_results):
+        result = interpolate_lambda(lambda_results)
+        fig, _ = plot_lambda(result)
+        assert fig is not None
+        plt.close(fig)
+
+    def test_plot_leppr_accepts_interpolated_result(self, leppr_results):
+        result = interpolate_leppr(leppr_results)
+        fig, _ = plot_logical_error_probability_per_round(result)
+        assert fig is not None
+        plt.close(fig)
+
+    def test_plot_leppr_raw_renders(self, leppr_results, num_rounds):
+        lep = np.array([0.1, 0.2, 0.3])
+        fig, _ = plot_logical_error_probability_per_round(
+            leppr_results, num_rounds, lep
+        )
+        assert fig is not None
+        plt.close(fig)
+
+    def test_plot_leppr_raw_requires_measured_points(self, leppr_results):
+        with pytest.raises(ValueError, match="required when plotting raw"):
+            plot_logical_error_probability_per_round(leppr_results)
+
+    def test_dispatch_matches_direct_call_title(self, lambda_results):
+        result = interpolate_lambda(lambda_results)
+        _, dispatched = plot(result)
+        _, direct = plot_lambda(result)
+        assert dispatched.get_title() == direct.get_title()
+        plt.close("all")

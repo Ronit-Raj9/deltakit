@@ -3,11 +3,13 @@
 
 from __future__ import annotations
 
-import matplotlib.pyplot as plt
-from deltakit_core.plotting.colours import RIVERLANE_PLOT_COLOURS
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
+from deltakit_explorer.plotting._lambda import plot_lambda
+from deltakit_explorer.plotting._leppr import (
+    plot_logical_error_probability_per_round,
+)
 from deltakit_explorer.plotting.results import LambdaResult
 from deltakit_explorer.plotting.results import (
     LogicalErrorProbabilityPerRoundResult as LEPPRResult,
@@ -21,95 +23,50 @@ def plot(
     ax: Axes | None = None,
     title: str | None = None,
 ) -> tuple[Figure, Axes]:
-    """Generic plot function that dispatches to specialised plotting based on the
-    result type.
+    """Plot a precomputed result by dispatching to the matching specialised plotter.
 
-    This function inspects the type of ``result`` and calls the appropriate
-    rendering logic:
-
-    - `LambdaResult`: Render error-suppression factor Λ fit curve with error bands.
-    - `LEPPRResult`: Renders the logical error probability per round fit curve with error bands.
-
-    This enables users to compute the plot data separately (via `interpolate_lambda` or `interpolate_leppr`) and then render with a single call.
+    ``plot`` inspects the type of ``result`` and forwards it to the function that
+    owns the rendering for that type, so a precomputed result (from
+    ``interpolate_lambda`` or ``interpolate_leppr``) can be drawn with a single
+    call.
 
     Args:
         result: The precomputed plot data.
-        fig: An existing matplotlib Figure. If None,
-            a new figure will be created. Default is None.
-        ax: An existing matplotlib Axes. If None, a new
-            axes will be created. Default is None.
-        title: An optional custom title for the plot. If None,
-            a default title based on the result type will be used.
+        fig: An existing matplotlib Figure. If None, a new figure is created.
+        ax: An existing matplotlib Axes. If None, a new axes is created.
+        title: An optional custom title for the plot.
 
     Returns:
         The matplotlib Figure and Axes objects containing the plot.
 
     Raises:
-        ValueError: If ``fig`` and ``ax`` are not both None or both set.
         TypeError: If the ``result`` type is not supported.
 
     Examples:
-
-        Plotting a Lambda fit curve::
+        Plot a precomputed Λ fit::
 
             from deltakit_explorer.plotting.results import interpolate_lambda
 
-            lambda_result = interpolate_lambda(lambda_data, distances)
+            lambda_result = interpolate_lambda(lambda_data)
             fig, ax = plot(lambda_result)
 
-        Plotting a LEPPR fit curve::
+        Plot a precomputed LEPPR fit::
 
             from deltakit_explorer.plotting.results import interpolate_leppr
 
-            leppr_result = interpolate_leppr(leppr_data, num_rounds)
+            leppr_result = interpolate_leppr(leppr_data)
             fig, ax = plot(leppr_result)
-
     """
-    if (fig is None) ^ (ax is None):
-        msg = "The 'fig' and 'ax' parameters should either be both `None` or both set."
-        raise ValueError(msg)
-
-    if fig is None and ax is None:
-        fig, ax = plt.subplots()
-
-    assert ax is not None
-    assert fig is not None
-
     match result:
         case LambdaResult():
-            x_vals = result.distances
-            xlabel = "Code distance"
-            ylabel = "Logical Error Probability per Round"
-            default_title = "Error Suppression Factor Λ"
+            return plot_lambda(result, fig=fig, ax=ax, title=title)
         case LEPPRResult():
-            x_vals = result.rounds
-            xlabel = "Rounds"
-            ylabel = "Logical Error Probability"
-            default_title = "Logical Error Probability per Round"
+            return plot_logical_error_probability_per_round(
+                result, fig=fig, ax=ax, title=title
+            )
         case _:
             msg = (
                 f"Unsupported result type: {type(result).__name__}. "
                 "Expected `LambdaResult` or `LEPPRResult`."
             )
             raise TypeError(msg)
-
-    ax.plot(
-        x_vals,
-        result.interpolated,
-        label=result.fit_label,
-        color=RIVERLANE_PLOT_COLOURS[1],
-    )
-    ax.fill_between(
-        x_vals,
-        result.lower_boundary,
-        result.upper_boundary,
-        label=result.confidence_interval_label,
-        color=RIVERLANE_PLOT_COLOURS[0],
-        alpha=0.2,
-    )
-    ax.set_title(title if title is not None else default_title)
-    ax.set_xlabel(xlabel)
-    ax.set_ylabel(ylabel)
-    ax.legend()
-
-    return fig, ax
