@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import dataclasses
 import math
+import warnings
 from collections.abc import Sequence
 
 import numpy as np
@@ -236,8 +237,20 @@ def _profiled_neg_log_likelihood(
     rounds: npt.NDArray[np.float64],
     hits: npt.NDArray[np.int_],
     shots: npt.NDArray[np.int_],
+    fixed_other: float | None = None,
 ) -> float:
-    """Negative log-likelihood with one parameter fixed and the other free."""
+    """Negative log-likelihood with one parameter fixed.
+
+    The other parameter is re-optimised unless ``fixed_other`` is given, in which
+    case it is held at that value (used when the SPAM error is known).
+    """
+    if fixed_other is not None:
+        eps, spam = (
+            (fixed_value, fixed_other)
+            if fixed_index == 0
+            else (fixed_other, fixed_value)
+        )
+        return _total_neg_log_likelihood(eps, spam, rounds, hits, shots)
 
     def cost(other: float) -> float:
         eps, spam = (fixed_value, other) if fixed_index == 0 else (other, fixed_value)
@@ -256,17 +269,20 @@ def _profile_interval(
     hits: npt.NDArray[np.int_],
     shots: npt.NDArray[np.int_],
     num_sigmas: float,
+    fixed_other: float | None = None,
 ) -> Fit:
     # Anchor the target to the profiled likelihood at the best value (the global
     # minimum), so the root is always bracketed regardless of optimiser noise.
     nll_at_best = _profiled_neg_log_likelihood(
-        fixed_index, best_value, rounds, hits, shots
+        fixed_index, best_value, rounds, hits, shots, fixed_other
     )
     target = nll_at_best + 0.5 * num_sigmas**2
 
     def excess(value: float) -> float:
         return (
-            _profiled_neg_log_likelihood(fixed_index, value, rounds, hits, shots)
+            _profiled_neg_log_likelihood(
+                fixed_index, value, rounds, hits, shots, fixed_other
+            )
             - target
         )
 
@@ -289,6 +305,7 @@ def fit_leppr_and_spam(
     num_shots: npt.NDArray[np.int_] | Sequence[int],
     *,
     num_sigmas: float = 1.0,
+    fixed_spam: float | None = None,
 ) -> tuple[Fit, Fit]:
     """Fit the per-round error and SPAM error with asymmetric intervals.
 
@@ -297,11 +314,19 @@ def fit_leppr_and_spam(
     get an asymmetric confidence interval. ``num_sigmas = 1`` corresponds to a
     chi-square = 1 interval.
 
+    The per-round error and the SPAM error are correlated, so when the data only
+    weakly constrains the per-round error its interval can extend down to zero. If
+    the SPAM error is known independently, pass it as ``fixed_spam`` to remove the
+    correlation and obtain a tighter per-round interval. A warning is emitted when
+    the per-round interval is left open towards zero.
+
     Args:
         num_rounds: Number of QEC rounds for each measured point.
         num_fails: Number of logical failures observed at each round count.
         num_shots: Number of shots at each round count.
         num_sigmas: Width of the interval, in sigmas.
+        fixed_spam: A known SPAM error to hold fixed. When given, only the
+            per-round error is fitted.
 
     Returns:
         ``(leppr_fit, spam_fit)`` as :class:`Fit` instances.
@@ -320,9 +345,38 @@ def fit_leppr_and_spam(
     eps_guess = float(
         np.clip(np.mean(lep / np.maximum(rounds, 1)), _RATE_FLOOR, _RATE_CEIL)
     )
+
+    if fixed_spam is not None:
+        spam_best = float(np.clip(fixed_spam, _RATE_FLOOR, _RATE_CEIL))
+        # Fit in log space so the small rates are well scaled.
+        eps_only = optimize.minimize_scalar(
+            lambda log_eps: _total_neg_log_likelihood(
+                float(np.clip(np.exp(log_eps), _RATE_FLOOR, _RATE_CEIL)),
+                spam_best,
+                rounds,
+                fails,
+                shots,
+            ),
+            bounds=(float(np.log(_RATE_FLOOR)), float(np.log(_RATE_CEIL))),
+            method="bounded",
+        )
+        eps_best = float(np.clip(np.exp(eps_only.x), _RATE_FLOOR, _RATE_CEIL))
+        leppr_fit = _profile_interval(
+            0, eps_best, rounds, fails, shots, num_sigmas, fixed_other=spam_best
+        )
+        spam_fit = Fit(low=spam_best, best=spam_best, high=spam_best)
+        return leppr_fit, spam_fit
+
     spam_guess = float(np.clip(lep[0] if lep.size else 0.0, _RATE_FLOOR, _RATE_CEIL))
     eps_best, spam_best = _best_fit(rounds, fails, shots, eps_guess, spam_guess)
-
     leppr_fit = _profile_interval(0, eps_best, rounds, fails, shots, num_sigmas)
     spam_fit = _profile_interval(1, spam_best, rounds, fails, shots, num_sigmas)
+
+    if leppr_fit.low <= _RATE_FLOOR * 10 < leppr_fit.best:
+        warnings.warn(
+            "The per-round error interval is open towards zero: the data weakly "
+            "constrains it, most likely because of correlation with the SPAM error. "
+            "Pass `fixed_spam` if the SPAM error is known independently.",
+            stacklevel=2,
+        )
     return leppr_fit, spam_fit

@@ -400,6 +400,7 @@ def compute_logical_error_per_round_asymmetric(
     num_shots: npt.NDArray[np.int_] | Sequence[int],
     *,
     num_sigmas: float = 1.0,
+    fixed_spam: float | None = None,
 ) -> LogicalErrorProbabilityPerRoundData:
     """Fit the logical error probability per round with asymmetric intervals.
 
@@ -412,13 +413,15 @@ def compute_logical_error_per_round_asymmetric(
 
     Note that the per-round error and the SPAM error are correlated, so when the
     data only weakly constrains one of them its interval can be wide; this
-    reflects the genuine uncertainty rather than a failure of the fit.
+    reflects the genuine uncertainty rather than a failure of the fit. Pass
+    ``fixed_spam`` if the SPAM error is known to tighten the per-round interval.
 
     Args:
         num_rounds: Number of QEC rounds for each measured point.
         num_fails: Number of logical failures observed at each round count.
         num_shots: Number of shots at each round count.
         num_sigmas: Width of the interval, in sigmas.
+        fixed_spam: A known SPAM error to hold fixed during the fit, or None.
 
     Returns:
         The fit results, with the asymmetric bounds populated.
@@ -430,7 +433,7 @@ def compute_logical_error_per_round_asymmetric(
     rounds, fails, shots = rounds[order], fails[order], shots[order]
 
     leppr_fit, spam_fit = fit_leppr_and_spam(
-        rounds, fails, shots, num_sigmas=num_sigmas
+        rounds, fails, shots, num_sigmas=num_sigmas, fixed_spam=fixed_spam
     )
     return LogicalErrorProbabilityPerRoundData(
         leppr=leppr_fit.best,

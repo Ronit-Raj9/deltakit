@@ -146,3 +146,14 @@ class TestFitLepprAndSpam:
     def test_length_mismatch_raises(self) -> None:
         with pytest.raises(ValueError):
             fit_leppr_and_spam([2, 4], [1], [1000])
+
+    def test_fixed_spam_pins_spam_and_tightens_leppr(self) -> None:
+        rounds, fails, shots = _model_counts(1e-6, 1e-7, [2, 6, 10, 14], 1_000_000)
+        free_leppr, _ = fit_leppr_and_spam(rounds, fails, shots)
+        fixed_leppr, fixed_spam = fit_leppr_and_spam(
+            rounds, fails, shots, fixed_spam=1e-7
+        )
+        assert fixed_spam.low == fixed_spam.best == fixed_spam.high
+        # Holding SPAM fixed removes the correlation, so the lower bound cannot be
+        # looser than the free fit.
+        assert fixed_leppr.low >= free_leppr.low
