@@ -84,6 +84,14 @@ def compute_lambda_interval_from_results(
     This is the asymmetric counterpart to :func:`_compute_lambda_from_results`: it
     fits each distance with a binomial likelihood and propagates the per-distance
     bounds through :func:`calculate_lambda_asymmetric`.
+
+    Args:
+        num_rounds_by_distance: a mapping from each code distance to the number of
+            rounds used to estimate the logical error rate per round.
+        data: the sampling results for a single noise point.
+
+    Returns:
+        The Λ fit with its asymmetric bounds populated.
     """
     distances = sorted(num_rounds_by_distance.keys())
     lepprs: list[float] = []
@@ -122,6 +130,13 @@ def _extract_counts_from_results(
 
     Rounds with zero fails are dropped, with a warning, because they cannot be
     used to estimate a logical error rate.
+
+    Args:
+        num_rounds: the round counts to read out of the frame.
+        data: the sampling results for a single distance and noise point.
+
+    Returns:
+        The kept round counts together with the matching fails and shots.
     """
     num_fails: list[int] = []
     max_shots: list[int] = []

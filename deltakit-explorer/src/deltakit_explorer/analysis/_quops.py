@@ -94,23 +94,16 @@ def predict_quops_interval(lambda_data: LambdaData, distance: int) -> Fit:
     number of QuOps grows with Λ and shrinks with Λ₀, so the widest QuOps comes
     from the largest Λ together with the smallest Λ₀.
 
-    Parameters
-    ----------
-    lambda_data (LambdaData):
-        A fit carrying the asymmetric bounds ``lambda_low`` / ``lambda_high`` and
-        ``lambda0_low`` / ``lambda0_high``.
-    distance (int):
-        The odd distance at which to evaluate the number of QuOps.
+    Args:
+        lambda_data: A fit carrying the asymmetric bounds ``lambda_low`` /
+            ``lambda_high`` and ``lambda0_low`` / ``lambda0_high``.
+        distance: The odd distance at which to evaluate the number of QuOps.
 
-    Returns
-    -------
-    Fit:
+    Returns:
         The best estimate and its lower and upper bounds.
 
-    Raises
-    ------
-    ValueError
-        If ``lambda_data`` does not carry asymmetric bounds.
+    Raises:
+        ValueError: If ``lambda_data`` does not carry asymmetric bounds.
     """
     if (
         lambda_data.lambda_low is None

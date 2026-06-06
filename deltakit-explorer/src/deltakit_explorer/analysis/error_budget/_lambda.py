@@ -30,7 +30,20 @@ def _run_lambda_engine(
     sampling_parameters: SamplingParameters,
     memory_generator: MemoryGenerator | Mapping[int, Mapping[int, Circuit]],
 ) -> tuple[npt.NDArray[np.floating], list[str], pd.DataFrame]:
-    """Sample the memory experiments needed to estimate Λ at a single point."""
+    """Sample the memory experiments needed to estimate Λ at a single point.
+
+    Args:
+        noise_model: a callable adding noise to a circuit from the parameters.
+        noise_parameters: the parameters forwarded to ``noise_model``.
+        num_rounds_by_distances: a mapping from each code distance to the number
+            of rounds to sample.
+        sampling_parameters: parameters relating to the sampling tasks.
+        memory_generator: a callable that generates a memory experiment.
+
+    Returns:
+        The reshaped noise parameters, their identifier names, and the report
+        frame produced by the analysis engine.
+    """
     if isinstance(memory_generator, Mapping):
         memory_generator = PreComputedMemoryGenerator(memory_generator)
 

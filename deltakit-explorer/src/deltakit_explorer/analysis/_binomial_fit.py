@@ -217,7 +217,18 @@ def _best_fit(
     eps_guess: float,
     spam_guess: float,
 ) -> tuple[float, float]:
-    """Maximum-likelihood ``(eps, spam)``, optimised in log space for scaling."""
+    """Maximum-likelihood ``(eps, spam)``, optimised in log space for scaling.
+
+    Args:
+        rounds: Number of QEC rounds for each point.
+        hits: Number of failures observed at each point.
+        shots: Number of shots at each point.
+        eps_guess: Initial guess for the per-round error.
+        spam_guess: Initial guess for the SPAM error.
+
+    Returns:
+        The maximum-likelihood ``(eps, spam)``.
+    """
 
     def cost(log_params: npt.NDArray[np.float64]) -> float:
         eps = float(np.clip(np.exp(log_params[0]), _RATE_FLOOR, _RATE_CEIL))
@@ -243,6 +254,17 @@ def _profiled_neg_log_likelihood(
 
     The other parameter is re-optimised unless ``fixed_other`` is given, in which
     case it is held at that value (used when the SPAM error is known).
+
+    Args:
+        fixed_index: 0 to fix the per-round error, 1 to fix the SPAM error.
+        fixed_value: Value of the fixed parameter.
+        rounds: Number of QEC rounds for each point.
+        hits: Number of failures observed at each point.
+        shots: Number of shots at each point.
+        fixed_other: Value to hold the other parameter at, or None to fit it.
+
+    Returns:
+        The minimised negative log-likelihood.
     """
     if fixed_other is not None:
         eps, spam = (

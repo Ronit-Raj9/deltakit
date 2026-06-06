@@ -399,7 +399,16 @@ def calculate_lambda_and_lambda_stddev(
 def _profile_scalar(
     cost: Callable[[float], float], best: float, num_sigmas: float
 ) -> Fit:
-    """Profile a 1-D cost outward from ``best`` to a chi-square = num_sigmas**2 rise."""
+    """Profile a 1-D cost outward from ``best`` to a chi-square = num_sigmas**2 rise.
+
+    Args:
+        cost: A function of one parameter, minimal at ``best``.
+        best: The best-fit value of the parameter.
+        num_sigmas: Width of the interval, in sigmas.
+
+    Returns:
+        The best value and its lower and upper bounds.
+    """
     target = cost(best) + 0.5 * num_sigmas**2
 
     def excess(value: float) -> float:
@@ -430,6 +439,16 @@ def _asymmetric_line_fit(
     The residual is scaled by the upper error where the model lies above the data
     point and by the lower error where it lies below, then the slope and offset
     are each profiled for an asymmetric interval.
+
+    Args:
+        x: Abscissae of the points to fit.
+        y: Ordinates of the points to fit.
+        sigma_low: Per-point lower error on ``y``.
+        sigma_high: Per-point upper error on ``y``.
+        num_sigmas: Width of the interval, in sigmas.
+
+    Returns:
+        The ``(slope, offset)`` fits, each with its lower and upper bounds.
     """
 
     def cost(slope: float, offset: float) -> float:
