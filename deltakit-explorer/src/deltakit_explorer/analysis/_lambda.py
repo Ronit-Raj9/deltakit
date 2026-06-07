@@ -12,12 +12,14 @@ from uncertainties import correlated_values
 from uncertainties.umath import exp as uexp
 from uncertainties.umath import log as ulog
 
+from deltakit_explorer.analysis._estimate import Estimate
+
 
 def lambda_from_shifted_fit(
     slope: float,
     offset: float,
     cov: npt.NDArray[np.floating],
-) -> tuple[tuple[float, float], tuple[float, float]]:
+) -> tuple[Estimate, Estimate]:
     """Error suppression factors from a shifted-distance linear fit.
 
     Recovers ``Λ = exp(-2 · slope)`` and ``Λ₀ = exp(-offset - ln(Λ)/2)``, with
@@ -31,14 +33,14 @@ def lambda_from_shifted_fit(
         cov: Covariance matrix of the fit parameters.
 
     Returns:
-        ``((lambda_, lambda_std), (lambda0, lambda0_std))``.
+        ``(Estimate(lambda_, lambda_std), Estimate(lambda0, lambda0_std))``.
     """
     uncertain_slope, uncertain_offset = correlated_values([slope, offset], cov)
     uncertain_lambda = uexp(-2 * uncertain_slope)
     uncertain_lambda0 = uexp(-uncertain_offset - ulog(uncertain_lambda) / 2)
     return (
-        (float(uncertain_lambda.nominal_value), float(uncertain_lambda.std_dev)),
-        (float(uncertain_lambda0.nominal_value), float(uncertain_lambda0.std_dev)),
+        Estimate.from_ufloat(uncertain_lambda),
+        Estimate.from_ufloat(uncertain_lambda0),
     )
 
 
@@ -46,7 +48,7 @@ def lambda_from_lin_fit(
     slope: float,
     offset: float,
     cov: npt.NDArray[np.floating],
-) -> tuple[tuple[float, float], tuple[float, float]]:
+) -> tuple[Estimate, Estimate]:
     """Error suppression factors from a ``(d+1)/2`` linear fit.
 
     Recovers ``Λ = exp(-slope)`` and ``Λ₀ = exp(-offset)``, with standard
@@ -59,14 +61,14 @@ def lambda_from_lin_fit(
         cov: Covariance matrix of the fit parameters.
 
     Returns:
-        ``((lambda_, lambda_std), (lambda0, lambda0_std))``.
+        ``(Estimate(lambda_, lambda_std), Estimate(lambda0, lambda0_std))``.
     """
     uncertain_slope, uncertain_offset = correlated_values([slope, offset], cov)
     uncertain_lambda = uexp(-uncertain_slope)
     uncertain_lambda0 = uexp(-uncertain_offset)
     return (
-        (float(uncertain_lambda.nominal_value), float(uncertain_lambda.std_dev)),
-        (float(uncertain_lambda0.nominal_value), float(uncertain_lambda0.std_dev)),
+        Estimate.from_ufloat(uncertain_lambda),
+        Estimate.from_ufloat(uncertain_lambda0),
     )
 
 
@@ -74,7 +76,7 @@ def lambda_from_curve_fit(
     lamb0: float,
     lamb: float,
     cov: npt.NDArray[np.floating],
-) -> tuple[tuple[float, float], tuple[float, float]]:
+) -> tuple[Estimate, Estimate]:
     """Error suppression factors from a non-linear ``curve_fit``.
 
     Args:
@@ -83,12 +85,12 @@ def lambda_from_curve_fit(
         cov: Covariance matrix of the fit parameters.
 
     Returns:
-        ``((lambda_, lambda_std), (lambda0, lambda0_std))``.
+        ``(Estimate(lambda_, lambda_std), Estimate(lambda0, lambda0_std))``.
     """
     uncertain_lamb0, uncertain_lamb = correlated_values([lamb0, lamb], cov)
     return (
-        (float(uncertain_lamb.nominal_value), float(uncertain_lamb.std_dev)),
-        (float(uncertain_lamb0.nominal_value), float(uncertain_lamb0.std_dev)),
+        Estimate.from_ufloat(uncertain_lamb),
+        Estimate.from_ufloat(uncertain_lamb0),
     )
 
 

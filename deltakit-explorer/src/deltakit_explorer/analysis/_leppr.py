@@ -9,10 +9,10 @@ from scipy.optimize import curve_fit
 from uncertainties import correlated_values, ufloat, unumpy
 from uncertainties.umath import exp as uexp
 
+from deltakit_explorer.analysis._estimate import Estimate
 
-def leppr_from_single_point(
-    lep: float, lep_stddev: float, rounds: int
-) -> tuple[float, float]:
+
+def leppr_from_single_point(lep: float, lep_stddev: float, rounds: int) -> Estimate:
     """Propagate uncertainty for the single-point LEPPR (Eq. 4, arXiv:2310.05900).
 
     Args:
@@ -21,11 +21,11 @@ def leppr_from_single_point(
         rounds: Number of QEC rounds.
 
     Returns:
-        Tuple of LEPPR and its standard deviation.
+        LEPPR and its standard deviation.
     """
     uncertain_lep = ufloat(lep, lep_stddev)
     leppr = (1 - (1 - 2 * uncertain_lep) ** (1 / rounds)) / 2
-    return float(leppr.nominal_value), float(leppr.std_dev)
+    return Estimate.from_ufloat(leppr)
 
 
 def log_fidelity_stddev(
@@ -51,7 +51,7 @@ def epsilon_and_spam_from_log_fit(
     slope: float,
     offset: float,
     cov: npt.NDArray[np.floating],
-) -> tuple[tuple[float, float], tuple[float, float]]:
+) -> tuple[Estimate, Estimate]:
     """LEPPR and SPAM error from the correlated log-linear fit parameters.
 
     Following https://arxiv.org/pdf/2505.09684v1 (Methods - Extracting logical
@@ -65,14 +65,14 @@ def epsilon_and_spam_from_log_fit(
         cov: Covariance matrix of the fit parameters.
 
     Returns:
-        ``((leppr, leppr_stddev), (spam_error, spam_error_stddev))``.
+        ``(Estimate(leppr, leppr_stddev), Estimate(spam_error, spam_error_stddev))``.
     """
     uncertain_slope, uncertain_offset = correlated_values([slope, offset], cov)
     uncertain_leppr = (1 - uexp(uncertain_slope)) / 2
     uncertain_spam = (1 - uexp(uncertain_offset)) / 2
     return (
-        (float(uncertain_leppr.nominal_value), float(uncertain_leppr.std_dev)),
-        (float(uncertain_spam.nominal_value), float(uncertain_spam.std_dev)),
+        Estimate.from_ufloat(uncertain_leppr),
+        Estimate.from_ufloat(uncertain_spam),
     )
 
 

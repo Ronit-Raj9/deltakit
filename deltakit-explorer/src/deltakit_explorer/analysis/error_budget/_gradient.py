@@ -7,6 +7,7 @@ from deltakit_circuit._circuit import Circuit
 from deltakit_decode.analysis._run_all_analysis_engine import RunAllAnalysisEngine
 from uncertainties import correlated_values
 
+from deltakit_explorer.analysis._estimate import Estimate
 from deltakit_explorer.analysis.error_budget._generation import (
     generate_decoder_managers_for_lambda,
 )
@@ -29,7 +30,7 @@ def polynomial_derivative_stddev(
     coefficients: npt.NDArray[np.floating],
     cov: npt.NDArray[np.floating],
     point: float,
-) -> tuple[float, float]:
+) -> Estimate:
     """Gradient and its standard deviation from a fitted polynomial.
 
     The polynomial coefficients are turned into correlated ``uncertainties``
@@ -42,14 +43,14 @@ def polynomial_derivative_stddev(
         point: Point at which to evaluate the derivative.
 
     Returns:
-        Tuple of the derivative value and its standard deviation.
+        The derivative value and its standard deviation.
     """
     uncertain_coefficients = correlated_values(coefficients, cov)
     derivative = sum(
         (power + 1) * coeff * point**power
         for power, coeff in enumerate(uncertain_coefficients[1:])
     )
-    return float(derivative.nominal_value), float(derivative.std_dev)
+    return Estimate.from_ufloat(derivative)
 
 
 def _variate_ith_parameter_by(
@@ -86,7 +87,7 @@ def _approximate_derivative_at_point_from_values(
     stddevs: npt.NDArray[np.floating],
     gradient_approximation_point: float,
     degree: int = 3,
-) -> tuple[float, float]:
+) -> Estimate:
     """Approximate the gradient at ``gradient_approximation_point`` from the given ``x``
     and ``y``.
 
