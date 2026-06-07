@@ -28,11 +28,11 @@ from scipy import optimize
 #: Default Bayes factor used to define the confidence interval. Hypotheses whose
 #: likelihood is more than this many times less likely than the best fit are
 #: excluded. A factor of 1000 corresponds to roughly a 99% interval.
-DEFAULT_MAX_LIKELIHOOD_FACTOR = 1000.0
+DEFAULT_MAX_LIKELIHOOD_FACTOR: float = 1000.0
 
 
 @dataclasses.dataclass(frozen=True)
-class Fit:
+class ConfidenceInterval:
     """A point estimate together with its lower and upper bounds.
 
     Attributes:
@@ -45,6 +45,14 @@ class Fit:
     best: float
     high: float
 
+    def __post_init__(self) -> None:
+        if not (self.low <= self.best <= self.high):
+            msg = (
+                f"Expected low <= best <= high, got "
+                f"{self.low}, {self.best}, {self.high}."
+            )
+            raise ValueError(msg)
+
     @property
     def lower_margin(self) -> float:
         """How far ``best`` sits above ``low``."""
@@ -56,32 +64,36 @@ class Fit:
         return self.high - self.best
 
 
-def log_binomial(*, p: float, n: int, hits: int) -> float:
-    """Return ``ln P(hits | Binomial(n, p))``.
+def log_binomial(*, p: float, num_trials: int, num_successes: int) -> float:
+    """Return ``ln P(num_successes | Binomial(num_trials, p))``.
 
     The computation is done in log space so that the tiny probabilities involved
     in large experiments stay representable.
 
     Args:
         p: Hypothesis probability, between 0 and 1.
-        n: Number of shots.
-        hits: Number of failures observed.
+        num_trials: Number of shots.
+        num_successes: Number of failures observed.
 
     Returns:
         The natural log of the binomial likelihood.
     """
     p = min(max(p, 0.0), 1.0)
-    misses = n - hits
+    misses = num_trials - num_successes
     result = 0.0
-    if hits:
+    if num_successes != 0:
         if p == 0:
             return -math.inf
-        result += math.log(p) * hits
-    if misses:
+        result += math.log(p) * num_successes
+    if misses != 0:
         if p == 1:
             return -math.inf
         result += math.log1p(-p) * misses
-    result += math.lgamma(n + 1) - math.lgamma(misses + 1) - math.lgamma(hits + 1)
+    result += (
+        math.lgamma(num_trials + 1)
+        - math.lgamma(misses + 1)
+        - math.lgamma(num_successes + 1)
+    )
     return result
 
 
@@ -90,7 +102,7 @@ def fit_binomial(
     num_shots: int,
     num_hits: int,
     max_likelihood_factor: float = DEFAULT_MAX_LIKELIHOOD_FACTOR,
-) -> Fit:
+) -> ConfidenceInterval:
     """Estimate an error rate and its asymmetric confidence interval.
 
     The interval contains every rate whose binomial likelihood is within
@@ -103,7 +115,7 @@ def fit_binomial(
             be before it is excluded from the interval. Must be at least 1.
 
     Returns:
-        A :class:`Fit` with the best estimate and its low and high bounds.
+        A :class:`ConfidenceInterval` with the best estimate and its low and high bounds.
 
     Raises:
         ValueError: If the inputs are out of range.
@@ -115,22 +127,22 @@ def fit_binomial(
         msg = f"Need 0 <= num_hits ({num_hits}) <= num_shots ({num_shots})."
         raise ValueError(msg)
     if num_shots == 0:
-        return Fit(low=0.0, best=0.5, high=1.0)
+        return ConfidenceInterval(low=0.0, best=0.5, high=1.0)
 
     best = num_hits / num_shots
-    target = log_binomial(p=best, n=num_shots, hits=num_hits) - math.log(
-        max_likelihood_factor
-    )
+    target = log_binomial(
+        p=best, num_trials=num_shots, num_successes=num_hits
+    ) - math.log(max_likelihood_factor)
 
     def gap(p: float) -> float:
-        return log_binomial(p=p, n=num_shots, hits=num_hits) - target
+        return log_binomial(p=p, num_trials=num_shots, num_successes=num_hits) - target
 
     # The likelihood is unimodal, so each tail crosses the target exactly once.
     low = 0.0 if num_hits == 0 else float(optimize.brentq(gap, 1e-18, best))
     high = (
         1.0 if num_hits == num_shots else float(optimize.brentq(gap, best, 1 - 1e-18))
     )
-    return Fit(low=low, best=best, high=high)
+    return ConfidenceInterval(low=low, best=best, high=high)
 
 
 def fit_binomial_batch(
@@ -205,7 +217,7 @@ def _total_neg_log_likelihood(
 ) -> float:
     model = _model_lep(rounds, eps, spam)
     return -sum(
-        log_binomial(p=float(p), n=int(n), hits=int(k))
+        log_binomial(p=float(p), num_trials=int(n), num_successes=int(k))
         for p, n, k in zip(model, shots, hits, strict=True)
     )
 
@@ -292,7 +304,7 @@ def _profile_interval(
     shots: npt.NDArray[np.int_],
     num_sigmas: float,
     fixed_other: float | None = None,
-) -> Fit:
+) -> ConfidenceInterval:
     # Anchor the target to the profiled likelihood at the best value (the global
     # minimum), so the root is always bracketed regardless of optimiser noise.
     nll_at_best = _profiled_neg_log_likelihood(
@@ -318,7 +330,9 @@ def _profile_interval(
         )
         return float(optimize.brentq(excess, low_x, high_x, xtol=1e-15))
 
-    return Fit(low=cross(_RATE_FLOOR), best=best_value, high=cross(_RATE_CEIL))
+    return ConfidenceInterval(
+        low=cross(_RATE_FLOOR), best=best_value, high=cross(_RATE_CEIL)
+    )
 
 
 def fit_leppr_and_spam(
@@ -328,7 +342,7 @@ def fit_leppr_and_spam(
     *,
     num_sigmas: float = 1.0,
     fixed_spam: float | None = None,
-) -> tuple[Fit, Fit]:
+) -> tuple[ConfidenceInterval, ConfidenceInterval]:
     """Fit the per-round error and SPAM error with asymmetric intervals.
 
     The model ``LEP(r) = (1 - (1 - 2 spam)(1 - 2 eps) ** r) / 2`` is fitted to the
@@ -351,7 +365,7 @@ def fit_leppr_and_spam(
             per-round error is fitted.
 
     Returns:
-        ``(leppr_fit, spam_fit)`` as :class:`Fit` instances.
+        ``(leppr_fit, spam_fit)`` as :class:`ConfidenceInterval` instances.
 
     Raises:
         ValueError: If the inputs have different lengths.
@@ -386,7 +400,7 @@ def fit_leppr_and_spam(
         leppr_fit = _profile_interval(
             0, eps_best, rounds, fails, shots, num_sigmas, fixed_other=spam_best
         )
-        spam_fit = Fit(low=spam_best, best=spam_best, high=spam_best)
+        spam_fit = ConfidenceInterval(low=spam_best, best=spam_best, high=spam_best)
         return leppr_fit, spam_fit
 
     spam_guess = float(np.clip(lep[0] if lep.size else 0.0, _RATE_FLOOR, _RATE_CEIL))

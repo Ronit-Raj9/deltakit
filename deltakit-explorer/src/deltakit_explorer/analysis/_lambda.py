@@ -9,7 +9,7 @@ import numpy as np
 import numpy.typing as npt
 import scipy.optimize
 
-from deltakit_explorer.analysis._binomial_fit import Fit
+from deltakit_explorer.analysis._binomial_fit import ConfidenceInterval
 
 
 @dataclass(frozen=True)
@@ -398,7 +398,7 @@ def calculate_lambda_and_lambda_stddev(
 
 def _profile_scalar(
     cost: Callable[[float], float], best: float, num_sigmas: float
-) -> Fit:
+) -> ConfidenceInterval:
     """Profile a 1-D cost outward from ``best`` to a chi-square = num_sigmas**2 rise.
 
     Args:
@@ -424,7 +424,7 @@ def _profile_scalar(
             step *= 2
         return best + step
 
-    return Fit(low=walk(-1), best=best, high=walk(1))
+    return ConfidenceInterval(low=walk(-1), best=best, high=walk(1))
 
 
 def _asymmetric_line_fit(
@@ -433,7 +433,7 @@ def _asymmetric_line_fit(
     sigma_low: npt.NDArray[np.float64],
     sigma_high: npt.NDArray[np.float64],
     num_sigmas: float,
-) -> tuple[Fit, Fit]:
+) -> tuple[ConfidenceInterval, ConfidenceInterval]:
     """Fit ``y = offset + slope * x`` with per-point asymmetric Gaussian errors.
 
     The residual is scaled by the upper error where the model lies above the data

@@ -6,7 +6,7 @@ import pandas as pd
 from deltakit_circuit._circuit import Circuit
 from deltakit_decode.analysis import RunAllAnalysisEngine
 
-from deltakit_explorer.analysis import Fit
+from deltakit_explorer.analysis import ConfidenceInterval
 from deltakit_explorer.analysis.error_budget._generation import (
     generate_decoder_managers_for_lambda,
 )
@@ -136,7 +136,7 @@ def inverse_lambda_interval_at(
     sampling_parameters: SamplingParameters = SamplingParameters(),
     memory_generator: MemoryGenerator
     | Mapping[int, Mapping[int, Circuit]] = get_rotated_surface_code_memory_circuit,
-) -> Fit:
+) -> ConfidenceInterval:
     """Compute 1 / Λ with an asymmetric confidence interval.
 
     This is the asymmetric counterpart to :func:`inverse_lambda_at`. It samples
@@ -172,7 +172,7 @@ def inverse_lambda_interval_at(
     )
     assert lambda_data.lambda_low is not None
     assert lambda_data.lambda_high is not None
-    return Fit(
+    return ConfidenceInterval(
         low=1 / lambda_data.lambda_high,
         best=1 / lambda_data.lambda_,
         high=1 / lambda_data.lambda_low,

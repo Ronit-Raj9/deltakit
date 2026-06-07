@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from deltakit_explorer.analysis import (
-    Fit,
+    ConfidenceInterval,
     calculate_lep_asymmetric,
     fit_binomial,
     fit_binomial_batch,
@@ -25,18 +25,18 @@ def _model_counts(
 class TestLogBinomial:
     def test_matches_sinter_documented_values(self) -> None:
         # From sinter._probability_util.log_binomial docstring examples.
-        assert log_binomial(p=0.5, n=100, hits=50) == pytest.approx(
+        assert log_binomial(p=0.5, num_trials=100, num_successes=50) == pytest.approx(
             -2.5308762, abs=1e-5
         )
-        assert log_binomial(p=0.2, n=1_000_000, hits=1_000) == pytest.approx(
-            -216626.97, rel=1e-6
-        )
+        assert log_binomial(
+            p=0.2, num_trials=1_000_000, num_successes=1_000
+        ) == pytest.approx(-216626.97, rel=1e-6)
 
     def test_zero_probability_with_hits_is_neg_inf(self) -> None:
-        assert log_binomial(p=0.0, n=10, hits=1) == -math.inf
+        assert log_binomial(p=0.0, num_trials=10, num_successes=1) == -math.inf
 
     def test_certain_probability_with_misses_is_neg_inf(self) -> None:
-        assert log_binomial(p=1.0, n=10, hits=1) == -math.inf
+        assert log_binomial(p=1.0, num_trials=10, num_successes=1) == -math.inf
 
 
 class TestFitBinomial:
@@ -70,7 +70,9 @@ class TestFitBinomial:
         assert fit.best == 1.0
 
     def test_zero_shots(self) -> None:
-        assert fit_binomial(num_shots=0, num_hits=0) == Fit(low=0.0, best=0.5, high=1.0)
+        assert fit_binomial(num_shots=0, num_hits=0) == ConfidenceInterval(
+            low=0.0, best=0.5, high=1.0
+        )
 
     @pytest.mark.parametrize(
         ("shots", "hits", "factor"),

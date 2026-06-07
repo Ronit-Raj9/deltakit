@@ -9,7 +9,7 @@ References
 
 from collections.abc import Callable
 
-from deltakit_explorer.analysis._binomial_fit import Fit
+from deltakit_explorer.analysis._binomial_fit import ConfidenceInterval
 from deltakit_explorer.analysis._lambda import LambdaData
 
 
@@ -86,7 +86,9 @@ def predict_quops_at_distance(lambda0: float, lambda_: float, distance: int) -> 
     return 1.0 / _calculate_lep(lambda0, lambda_, distance, distance)
 
 
-def predict_quops_interval(lambda_data: LambdaData, distance: int) -> Fit:
+def predict_quops_interval(
+    lambda_data: LambdaData, distance: int
+) -> ConfidenceInterval:
     """Predict the number of QuOps with a confidence interval.
 
     This propagates the asymmetric bounds on Λ and Λ₀ from an asymmetric Lambda
@@ -123,7 +125,7 @@ def predict_quops_interval(lambda_data: LambdaData, distance: int) -> Fit:
     high = predict_quops_at_distance(
         lambda_data.lambda0_low, lambda_data.lambda_high, distance
     )
-    return Fit(low=low, best=best, high=high)
+    return ConfidenceInterval(low=low, best=best, high=high)
 
 
 def predict_distance_for_quops(

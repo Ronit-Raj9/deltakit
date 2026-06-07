@@ -7,7 +7,7 @@ from deltakit_explorer.analysis._analysis import (
 )
 from deltakit_explorer.analysis._binomial_fit import (
     DEFAULT_MAX_LIKELIHOOD_FACTOR,
-    Fit,
+    ConfidenceInterval,
     fit_binomial,
     fit_binomial_batch,
     fit_leppr_and_spam,
