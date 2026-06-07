@@ -172,6 +172,7 @@ depolarization = "depolarization"
 Authorization = "Authorization"   # Web-related field.
 color = "color"                   # Used in matplotlib and stim APIs.
 colors = "colors"
+minimize = "minimize"             # scipy.optimize.minimize / minimize_scalar
 optimize = "optimize"             # scipy.optimize
 ax = "ax"                         # Typical naming for matplotlib Axes instances.
 center = "center"
