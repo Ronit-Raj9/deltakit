@@ -53,7 +53,9 @@ dependencies = [
   "pandas>=2.2.2",
   "pandas~=2.3; python_version >= '3.13'",
   "ldpc~=2.2",
-  "uncertainties>=3.2,<4",
+  # >=3.2.3: earlier 3.2 releases import the deprecated ``numpy.core`` in
+  # ``unumpy``, which fails under the test suite's ``filterwarnings = error``.
+  "uncertainties>=3.2.3,<4",
 ]
 [project.optional-dependencies]
 vis = ["seaborn"]
