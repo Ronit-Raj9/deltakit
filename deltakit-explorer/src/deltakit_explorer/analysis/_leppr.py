@@ -13,7 +13,10 @@ from deltakit_explorer.analysis._estimate import Estimate
 
 
 def leppr_from_single_point(lep: float, lep_stddev: float, rounds: int) -> Estimate:
-    """Propagate uncertainty for the single-point LEPPR (Eq. 4, arXiv:2310.05900).
+    """Propagate uncertainty for the single-point LEPPR.
+
+    See:
+        - Eq. 4, arXiv:2310.05900.
 
     Args:
         lep: Logical error probability.

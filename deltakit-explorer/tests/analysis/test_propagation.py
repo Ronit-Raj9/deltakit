@@ -117,9 +117,18 @@ class TestPropagationParity:
         current = log_fidelity_stddev(lep, lep_stddev)
         np.testing.assert_allclose(current, legacy, rtol=1e-12, atol=1e-15)
 
-    def test_epsilon_and_spam_from_log_fit(self) -> None:
-        slope, offset = -0.01, -0.05
-        cov = np.array([[1e-6, 2e-7], [2e-7, 3e-6]])
+    @pytest.mark.parametrize(
+        ("slope", "offset", "cov"),
+        [
+            (-0.01, -0.05, np.array([[1e-6, 2e-7], [2e-7, 3e-6]])),
+            (-0.5, -1.2, np.array([[1e-2, 4e-3], [4e-3, 2e-2]])),
+            (-2.0, -0.3, np.array([[5e-3, -1e-3], [-1e-3, 8e-3]])),
+            (-0.2, -1.5, np.array([[3e-4, 0.0], [0.0, 7e-4]])),
+        ],
+    )
+    def test_epsilon_and_spam_from_log_fit(
+        self, slope: float, offset: float, cov: np.ndarray
+    ) -> None:
         legacy = _legacy_epsilon_and_spam_from_log_fit(slope, offset, cov)
         current = epsilon_and_spam_from_log_fit(slope, offset, cov)
         np.testing.assert_allclose(current[0], legacy[0], rtol=1e-10, atol=1e-15)
