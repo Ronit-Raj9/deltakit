@@ -18,7 +18,7 @@ from deltakit_explorer.plotting import (
     interpolate_lambda,
     interpolate_leppr,
     plot_lambda,
-    plot_logical_error_probability_per_round,
+    plot_leppr,
 )
 
 
@@ -79,22 +79,19 @@ class TestLambdaBand:
 
 
 class TestPlotsRun:
-    def test_leppr_plot_runs_with_symmetric_bars(self, leppr_data):
-        data, _fails, _shots, rounds = leppr_data
-        lep, lep_stddev = calculate_lep_and_lep_stddev(_fails, _shots)
-        fig, _ = plot_logical_error_probability_per_round(data, rounds, lep, lep_stddev)
+    def test_leppr_plot_runs_with_symmetric_fit(self, leppr_data):
+        data, *_ = leppr_data
+        fig, _ = plot_leppr(interpolate_leppr(data))
         assert fig is not None
 
-    def test_leppr_plot_runs_with_binomial_bars(self, leppr_data):
-        data, fails, shots, rounds = leppr_data
-        lep, _ = calculate_lep_and_lep_stddev(fails, shots)
-        fig, _ = plot_logical_error_probability_per_round(
-            data, rounds, lep, num_failed_shots=fails, num_shots=shots
-        )
+    def test_leppr_plot_runs_with_asymmetric_fit(self):
+        rounds, fails, shots = _model_counts(0.02, 0.005, [2, 6, 10, 14], 500_000)
+        data = compute_logical_error_per_round_asymmetric(rounds, fails, shots)
+        fig, _ = plot_leppr(interpolate_leppr(data))
         assert fig is not None
 
     def test_lambda_plot_runs(self, lambda_data):
-        fig, _ = plot_lambda(lambda_data)
+        fig, _ = plot_lambda(interpolate_lambda(lambda_data))
         assert fig is not None
 
 
