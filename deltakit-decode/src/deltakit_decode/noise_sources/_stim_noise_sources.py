@@ -6,9 +6,9 @@ from itertools import chain
 from typing import Any, TypeAlias
 
 import deltakit_circuit as sp
+import deltakit_stim as stim
 import numpy as np
 import numpy.typing as npt
-import stim
 from deltakit_core.decoding_graphs import OrderedSyndrome
 
 from deltakit_decode.noise_sources._generic_noise_sources import (
@@ -28,7 +28,7 @@ class StimNoise(
     MonteCarloNoise[stim.Circuit, StimErrorT],
 ):
     """A noise model that takes a set of noise profiles
-    that can be applied to a lestim circuit. These noise profiles
+    that can be applied to a deltakit_stim circuit. These noise profiles
     should be defined as callables that will be processed by deltakit_circuit.
 
     Parameters
@@ -73,17 +73,17 @@ class StimNoise(
         self._batch_size = batch_size
 
     def permute_stim_circuit(self, stim_circuit: stim.Circuit) -> stim.Circuit:
-        """Apply noise to a lestim circuit
+        """Apply noise to a deltakit_stim circuit
 
         Parameters
         ----------
         stim_circuit : stim.Circuit
-            The lestim circuit to manipulate with StimNoise's noise profiles
+            The deltakit_stim circuit to manipulate with StimNoise's noise profiles
 
         Returns
         -------
         stim.Circuit
-            A new lestim circuit with noise applied via the noise profiles
+            A new deltakit_stim circuit with noise applied via the noise profiles
         """
         circuit = sp.Circuit.from_stim_circuit(stim_circuit)
         circuit.remove_noise()
@@ -128,7 +128,7 @@ class StimNoise(
 
 
 class OptionedStim(StimNoise):
-    """A class with the ability to manipulate lestim circuits
+    """A class with the ability to manipulate deltakit_stim circuits
     with after clifford gate depolarisation, before measure
     flip probability and after reset flip probability. For
     more information on these noise profiles see:

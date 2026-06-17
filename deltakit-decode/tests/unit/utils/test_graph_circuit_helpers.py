@@ -2,9 +2,9 @@
 from itertools import tee
 
 import deltakit_circuit as sp
+import deltakit_stim as stim
 import networkx as nx
 import pytest
-import stim
 from deltakit_core.decoding_graphs import FixedWidthBitstring
 
 from deltakit_decode.utils._graph_circuit_helpers import (
@@ -158,11 +158,13 @@ class TestParseStimCircuit:
         ],
         scope="class",
     )
-    def stim_circuit(self, request):
+    @classmethod
+    def stim_circuit(cls, request):
         return request.param
 
     @pytest.fixture(scope="class")
-    def original_graph_trimmed_graph_logicals(self, stim_circuit):
+    @classmethod
+    def original_graph_trimmed_graph_logicals(cls, stim_circuit):
         trimmed_graph, logicals, _ = parse_stim_circuit(stim_circuit, trim_circuit=True)
         original_graph, _, _ = parse_stim_circuit(stim_circuit, trim_circuit=False)
         return original_graph, trimmed_graph, logicals

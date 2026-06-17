@@ -1,8 +1,8 @@
 # (c) Copyright Riverlane 2020-2025.
 from pathlib import Path
 
+import deltakit_stim as stim
 import pytest
-import stim
 from deltakit_core.decoding_graphs import NXDecodingGraph
 from deltakit_core.decoding_graphs._decoding_graph_tools import (
     compute_graph_distance,
@@ -30,13 +30,13 @@ class TestGraphToJSON:
             graph_to_json(graph, logicals)
 
     @pytest.fixture(
-        scope="class",
         params=[
             "surface_code:rotated_memory_x",
             "surface_code:unrotated_memory_z",
         ],
     )
-    def stim_circuit(self, request):
+    @classmethod
+    def stim_circuit(cls, request):
         distance = 5
         return stim.Circuit.generated(
             request.param,

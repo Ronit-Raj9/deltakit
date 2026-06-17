@@ -2,12 +2,8 @@
 # ("Riverlane") and is Riverlane Confidential Information.
 # (c) Copyright Riverlane 2021-2025. All rights reserved.
 
+import deltakit_stim as stim
 import pytest
-
-try:
-    import lestim as stim
-except ImportError:
-    import stim
 
 from deltakit_core.decoding_graphs._decoding_graph_tools import parse_stim_circuit
 
@@ -51,7 +47,8 @@ class TestParseStimCircuit:
         ],
         scope="class",
     )
-    def stim_circuit(self, request) -> stim.Circuit:
+    @classmethod
+    def stim_circuit(cls, request) -> stim.Circuit:
         return request.param
 
     def test_trimmed_stim_circuit_has_same_number_of_detectors_as_its_corresponding_trimmed_graph(
