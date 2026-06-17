@@ -4,6 +4,7 @@ import warnings
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from enum import Enum
+from typing import Literal
 
 import numpy as np
 import numpy.typing as npt
@@ -12,6 +13,7 @@ from uncertainties import correlated_values
 from uncertainties.umath import exp as uexp
 from uncertainties.umath import log as ulog
 
+from deltakit_explorer.analysis._binomial_fit import ConfidenceInterval
 from deltakit_explorer.analysis._estimate import Estimate
 
 
@@ -93,8 +95,6 @@ def lambda_from_curve_fit(
         Estimate.from_ufloat(uncertain_lamb0),
     )
 
-from deltakit_explorer.analysis._binomial_fit import ConfidenceInterval
-
 
 @dataclass(frozen=True)
 class LambdaData:
@@ -122,13 +122,10 @@ class LambdaData:
         distances: An array of code distances.
         leppr: An array for leppr computed for all code distances.
         leppr_std: An array for leppr standard deviation computed for all code distances.
-        lambda_low: Lower bound of Λ. Only set by
-            :func:`calculate_lambda_asymmetric`, otherwise None.
-        lambda_high: Upper bound of Λ, or None.
-        lambda0_low: Lower bound of Λ₀, or None.
-        lambda0_high: Upper bound of Λ₀, or None.
-        leppr_low: Per-distance lower bounds of the leppr, or None.
-        leppr_high: Per-distance upper bounds of the leppr, or None.
+        lambda_interval: Asymmetric confidence interval ``(low, best, high)`` for Λ.
+            Only set by :func:`calculate_lambda_asymmetric`, otherwise None.
+        lambda0_interval: Asymmetric confidence interval ``(low, best, high)`` for Λ₀,
+            or None.
 
     Note:
         This class maintains the invariant that the lengths for 'distances', 'leppr' and 'leppr_std'
@@ -142,17 +139,22 @@ class LambdaData:
     distances: npt.NDArray[np.int_]
     leppr: npt.NDArray[np.float64]
     leppr_std: npt.NDArray[np.float64]
-    lambda_low: float | None = None
-    lambda_high: float | None = None
-    lambda0_low: float | None = None
-    lambda0_high: float | None = None
-    leppr_low: npt.NDArray[np.float64] | None = None
-    leppr_high: npt.NDArray[np.float64] | None = None
+    lambda_interval: ConfidenceInterval | None = None
+    lambda0_interval: ConfidenceInterval | None = None
 
     def __post_init__(self) -> None:
         if not (len(self.distances) == len(self.leppr) == len(self.leppr_std)):
             msg = "Mismatch in array lengths for 'distances', 'leppr' and 'leppr_std'."
             raise ValueError(msg)
+
+    @property
+    def has_asymmetric_bounds(self) -> bool:
+        """Whether asymmetric Λ and Λ₀ intervals are available.
+
+        These are populated by :func:`calculate_lambda_asymmetric`; the standard
+        symmetric fit leaves them as None.
+        """
+        return self.lambda_interval is not None and self.lambda0_interval is not None
 
 
 _LambdaFitCallable = Callable[
@@ -487,12 +489,16 @@ def _profile_scalar(
     Returns:
         The best value and its lower and upper bounds.
     """
+    # A 1-sigma interval is reached where the cost rises by 0.5 above its minimum
+    # (a chi-square = 1 increase), generalising to num_sigmas**2 / 2 for wider
+    # intervals. This is the profile-likelihood / MINOS rule that follows from
+    # Wilks' theorem: https://statproofbook.github.io/P/ci-wilks.html
     target = cost(best) + 0.5 * num_sigmas**2
 
     def excess(value: float) -> float:
         return cost(value) - target
 
-    def walk(direction: int) -> float:
+    def walk(direction: Literal[-1, 1]) -> float:
         step = direction * (abs(best) * 0.5 + 1e-3)
         for _ in range(200):
             candidate = best + step
@@ -530,6 +536,11 @@ def _asymmetric_line_fit(
     """
 
     def cost(slope: float, offset: float) -> float:
+        # Asymmetric chi-square: each residual is divided by the upper error
+        # where the model lies above the point and by the lower error where it
+        # lies below, so a point with a long upper tail constrains the fit less
+        # from above than from below. See Barlow, "Asymmetric Statistical
+        # Errors" (arXiv:physics/0406120).
         residual = offset + slope * x - y
         sigma = np.where(residual >= 0, sigma_high, sigma_low)
         return 0.5 * float(np.sum((residual / sigma) ** 2))
@@ -537,7 +548,8 @@ def _asymmetric_line_fit(
     def objective(params: npt.NDArray[np.float64]) -> float:
         return cost(float(params[0]), float(params[1]))
 
-    slope0, offset0 = np.polyfit(x, y, 1)
+    # Initial guess from an ordinary (symmetric) least-squares line.
+    offset0, slope0 = np.polynomial.Polynomial.fit(x, y, 1).convert().coef
     best = scipy.optimize.minimize(
         objective, x0=np.array([slope0, offset0]), method="Nelder-Mead"
     )
@@ -568,7 +580,7 @@ def calculate_lambda_asymmetric(
 
     This is the asymmetric counterpart to :func:`calculate_lambda_and_lambda_stddev`.
     It takes the per-distance leppr together with its lower and upper bounds (for
-    example from :func:`compute_logical_error_per_round_asymmetric`) and fits
+    example from :func:`fit_logical_error_per_round_asymmetric`) and fits
     ``ln(leppr)`` against ``(d + 1) / 2`` with asymmetric errors, which is the
     same linear model as the ``LIN`` method. ``Λ = exp(-slope)`` and
     ``Λ₀ = exp(-offset)``, so both intervals stay strictly positive.
@@ -621,6 +633,20 @@ def calculate_lambda_asymmetric(
     lambda0_low = float(np.exp(-offset_fit.high))
     lambda0_high = float(np.exp(-offset_fit.low))
 
+    # Report the interval around the central (symmetric-fit) value. The
+    # profile-likelihood bounds normally bracket it; widen marginally in the
+    # rare case the two fits disagree so the low <= best <= high invariant holds.
+    lambda_interval = ConfidenceInterval(
+        low=min(lambda_low, central.lambda_),
+        best=central.lambda_,
+        high=max(lambda_high, central.lambda_),
+    )
+    lambda0_interval = ConfidenceInterval(
+        low=min(lambda0_low, central.lambda0),
+        best=central.lambda0,
+        high=max(lambda0_high, central.lambda0),
+    )
+
     return LambdaData(
         lambda_=central.lambda_,
         lambda_std=central.lambda_std,
@@ -629,10 +655,6 @@ def calculate_lambda_asymmetric(
         distances=distances,
         leppr=leppr,
         leppr_std=central.leppr_std,
-        lambda_low=lambda_low,
-        lambda_high=lambda_high,
-        lambda0_low=lambda0_low,
-        lambda0_high=lambda0_high,
-        leppr_low=leppr_low,
-        leppr_high=leppr_high,
+        lambda_interval=lambda_interval,
+        lambda0_interval=lambda0_interval,
     )

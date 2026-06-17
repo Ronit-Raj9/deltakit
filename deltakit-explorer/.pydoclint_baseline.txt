@@ -745,8 +745,6 @@ src/deltakit_explorer/types/_types.py
     DOC103: Method `Measurements._deinstrument_leakage_circuit`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [circuit: str].
     DOC201: Method `Measurements._deinstrument_leakage_circuit` does not have a return section in docstring
     DOC111: Method `Measurements.to_detectors_and_observables`: The option `--arg-type-hints-in-docstring` is `False` but there are type hints in the docstring arg list
-    DOC501: Method `Measurements.to_detectors_and_observables` has raise statements, but the docstring does not have a "Raises" section
-    DOC503: Method `Measurements.to_detectors_and_observables` exceptions in the "Raises" section in the docstring do not match those in the function body. Raised exceptions in the docstring: []. Raised exceptions in the body: ['ValueError'].
     DOC606: Class `NoiseModel`, Attribute `ENDPOINT`: This attribute is documented inline, but it should be documented in the class docstring instead.
     DOC606: Class `NoiseModel`, Attribute `ENDPOINT_RESULT_FIELDNAME`: This attribute is documented inline, but it should be documented in the class docstring instead.
     DOC601: Class `NoiseModel`: Class docstring contains fewer class attributes than actual class attributes.  (Please read https://jsh9.github.io/pydoclint/checking_class_attributes.html on how to correctly document class attributes.)

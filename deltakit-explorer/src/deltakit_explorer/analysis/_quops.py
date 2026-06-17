@@ -91,14 +91,17 @@ def predict_quops_interval(
 ) -> ConfidenceInterval:
     """Predict the number of QuOps with a confidence interval.
 
-    This propagates the asymmetric bounds on Λ and Λ₀ from an asymmetric Lambda
-    fit (see :func:`calculate_lambda_asymmetric`) into the QuOps estimate. The
-    number of QuOps grows with Λ and shrinks with Λ₀, so the widest QuOps comes
-    from the largest Λ together with the smallest Λ₀.
+    QuOps (quantum operations) is the number of logical operations achievable
+    before a logical error occurs, taken as ``1 / pL`` for a distance-D, D-round
+    block (see :func:`predict_quops_at_distance`). This propagates the asymmetric
+    bounds on Λ and Λ₀ from an asymmetric Lambda fit (see
+    :func:`calculate_lambda_asymmetric`) into that estimate. The number of QuOps
+    grows with Λ and shrinks with Λ₀, so the widest QuOps comes from the largest Λ
+    together with the smallest Λ₀.
 
     Args:
-        lambda_data: A fit carrying the asymmetric bounds ``lambda_low`` /
-            ``lambda_high`` and ``lambda0_low`` / ``lambda0_high``.
+        lambda_data: A fit carrying the asymmetric ``lambda_interval`` and
+            ``lambda0_interval`` bounds (see :attr:`LambdaData.has_asymmetric_bounds`).
         distance: The odd distance at which to evaluate the number of QuOps.
 
     Returns:
@@ -107,23 +110,21 @@ def predict_quops_interval(
     Raises:
         ValueError: If ``lambda_data`` does not carry asymmetric bounds.
     """
-    if (
-        lambda_data.lambda_low is None
-        or lambda_data.lambda_high is None
-        or lambda_data.lambda0_low is None
-        or lambda_data.lambda0_high is None
-    ):
+    if not lambda_data.has_asymmetric_bounds:
         msg = (
             "lambda_data must carry asymmetric bounds. Use "
             "calculate_lambda_asymmetric to produce them."
         )
         raise ValueError(msg)
+    # has_asymmetric_bounds guarantees both intervals are set.
+    assert lambda_data.lambda_interval is not None
+    assert lambda_data.lambda0_interval is not None
     best = predict_quops_at_distance(lambda_data.lambda0, lambda_data.lambda_, distance)
     low = predict_quops_at_distance(
-        lambda_data.lambda0_high, lambda_data.lambda_low, distance
+        lambda_data.lambda0_interval.high, lambda_data.lambda_interval.low, distance
     )
     high = predict_quops_at_distance(
-        lambda_data.lambda0_low, lambda_data.lambda_high, distance
+        lambda_data.lambda0_interval.low, lambda_data.lambda_interval.high, distance
     )
     return ConfidenceInterval(low=low, best=best, high=high)
 

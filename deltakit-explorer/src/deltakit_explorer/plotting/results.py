@@ -15,8 +15,8 @@ from deltakit_explorer.analysis import (
 
 
 def _lambda_interpolated(
-    lambda0: npt.NDArray[np.floating],
-    lambda_: npt.NDArray[np.floating],
+    lambda0: float | npt.NDArray[np.floating],
+    lambda_: float | npt.NDArray[np.floating],
     distances: npt.NDArray[np.int_],
 ) -> npt.NDArray[np.floating]:
     """Interpolate the logical error probability per round for the given parameters.
@@ -244,14 +244,17 @@ def interpolate_lambda(
     # Use the bounds from an asymmetric fit if they are available, otherwise
     # build a multiplicative band from the symmetric standard deviations (Λ and Λ₀
     # are exponentials of the fit parameters, so the band is not symmetric).
-    if (
-        lambda_data.lambda_low is not None
-        and lambda_data.lambda_high is not None
-        and lambda_data.lambda0_low is not None
-        and lambda_data.lambda0_high is not None
-    ):
-        lambda_low, lambda_high = lambda_data.lambda_low, lambda_data.lambda_high
-        lambda0_low, lambda0_high = lambda_data.lambda0_low, lambda_data.lambda0_high
+    if lambda_data.has_asymmetric_bounds:
+        assert lambda_data.lambda_interval is not None
+        assert lambda_data.lambda0_interval is not None
+        lambda_low, lambda_high = (
+            lambda_data.lambda_interval.low,
+            lambda_data.lambda_interval.high,
+        )
+        lambda0_low, lambda0_high = (
+            lambda_data.lambda0_interval.low,
+            lambda_data.lambda0_interval.high,
+        )
     else:
         lambda_low, lambda_high = _suppression_band(
             lambda_data.lambda_, lambda_data.lambda_std, num_sigmas

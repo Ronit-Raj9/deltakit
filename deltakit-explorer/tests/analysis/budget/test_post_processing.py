@@ -35,9 +35,9 @@ def test_compute_lambda_interval_from_results() -> None:
     result = compute_lambda_interval_from_results(
         dict.fromkeys(distances, rounds), data
     )
-    assert result.lambda_low is not None
-    assert result.lambda_high is not None
-    assert result.lambda_low <= result.lambda_ <= result.lambda_high
+    assert result.has_asymmetric_bounds
+    assert result.lambda_interval is not None
+    assert result.lambda_interval.low <= result.lambda_ <= result.lambda_interval.high
     assert result.lambda_ == pytest.approx(lambda_true, rel=0.1)
 
 

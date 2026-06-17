@@ -22,7 +22,7 @@ from deltakit_explorer.analysis._leppr import (
     calculate_lep_and_lep_stddev,
     calculate_lep_asymmetric,
     compute_logical_error_per_round,
-    compute_logical_error_per_round_asymmetric,
+    fit_logical_error_per_round_asymmetric,
     simulate_different_round_numbers_for_lep_per_round_estimation,
 )
 from deltakit_explorer.analysis._quops import (

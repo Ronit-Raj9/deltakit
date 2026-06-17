@@ -11,7 +11,7 @@ from deltakit_explorer.analysis import (
     calculate_lambda_asymmetric,
     calculate_lep_and_lep_stddev,
     compute_logical_error_per_round,
-    compute_logical_error_per_round_asymmetric,
+    fit_logical_error_per_round_asymmetric,
 )
 from deltakit_explorer.analysis import (
     LogicalErrorProbabilityPerRoundData as LEPPRData,
@@ -169,4 +169,4 @@ def _compute_logical_error_rate_per_round_interval_from_results(
     num_rounds: npt.NDArray[np.int_] | Sequence[int], data: pd.DataFrame
 ) -> LEPPRData:
     rounds, num_fails, max_shots = _extract_counts_from_results(num_rounds, data)
-    return compute_logical_error_per_round_asymmetric(rounds, num_fails, max_shots)
+    return fit_logical_error_per_round_asymmetric(rounds, num_fails, max_shots)

@@ -52,7 +52,7 @@ class TestFitBinomial:
         fit = fit_binomial(num_shots=100_000_000, num_hits=2)
         assert fit.best == pytest.approx(2e-8)
         assert fit.high == pytest.approx(1.259e-7, rel=1e-3)
-        assert fit.upper_margin > 5 * fit.lower_margin
+        assert (fit.high - fit.best) > 5 * (fit.best - fit.low)
 
     def test_low_bound_is_non_negative(self) -> None:
         fit = fit_binomial(num_shots=1_000_000, num_hits=1)
@@ -143,7 +143,9 @@ class TestFitLepprAndSpam:
     def test_asymmetric_in_rare_regime(self) -> None:
         rounds, fails, shots = _model_counts(1e-6, 1e-7, [2, 6, 10, 14], 1_000_000)
         leppr, _ = fit_leppr_and_spam(rounds, fails, shots)
-        assert leppr.lower_margin != pytest.approx(leppr.upper_margin, rel=0.2)
+        assert (leppr.best - leppr.low) != pytest.approx(
+            leppr.high - leppr.best, rel=0.2
+        )
 
     def test_length_mismatch_raises(self) -> None:
         with pytest.raises(ValueError):

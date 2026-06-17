@@ -19,7 +19,7 @@ from __future__ import annotations
 import dataclasses
 import math
 import warnings
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 import numpy as np
 import numpy.typing as npt
@@ -47,21 +47,8 @@ class ConfidenceInterval:
 
     def __post_init__(self) -> None:
         if not (self.low <= self.best <= self.high):
-            msg = (
-                f"Expected low <= best <= high, got "
-                f"{self.low}, {self.best}, {self.high}."
-            )
+            msg = f"Expected low <= best <= high, got {self.low}, {self.best}, {self.high}."
             raise ValueError(msg)
-
-    @property
-    def lower_margin(self) -> float:
-        """How far ``best`` sits above ``low``."""
-        return self.best - self.low
-
-    @property
-    def upper_margin(self) -> float:
-        """How far ``high`` sits above ``best``."""
-        return self.high - self.best
 
 
 def log_binomial(*, p: float, num_trials: int, num_successes: int) -> float:
@@ -98,9 +85,9 @@ def log_binomial(*, p: float, num_trials: int, num_successes: int) -> float:
 
 
 def fit_binomial(
-    *,
     num_shots: int,
     num_hits: int,
+    *,
     max_likelihood_factor: float = DEFAULT_MAX_LIKELIHOOD_FACTOR,
 ) -> ConfidenceInterval:
     """Estimate an error rate and its asymmetric confidence interval.
@@ -137,7 +124,11 @@ def fit_binomial(
     def gap(p: float) -> float:
         return log_binomial(p=p, num_trials=num_shots, num_successes=num_hits) - target
 
-    # The likelihood is unimodal, so each tail crosses the target exactly once.
+    # The binomial likelihood is unimodal in ``p`` with its peak at ``best``, so
+    # ``gap`` is positive at the peak and decreases monotonically towards each
+    # end. Each side therefore crosses zero exactly once, and a bracketed root
+    # finder (Brent's method) returns that single crossing robustly without
+    # needing derivatives.
     low = 0.0 if num_hits == 0 else float(optimize.brentq(gap, 1e-18, best))
     high = (
         1.0 if num_hits == num_shots else float(optimize.brentq(gap, best, 1 - 1e-18))
@@ -172,8 +163,8 @@ def fit_binomial_batch(
 
     fits = [
         fit_binomial(
-            num_shots=int(s),
-            num_hits=int(h),
+            int(s),
+            int(h),
             max_likelihood_factor=max_likelihood_factor,
         )
         for s, h in zip(shots.ravel(), hits.ravel(), strict=True)
@@ -193,11 +184,17 @@ def fit_binomial_batch(
 # to the raw counts by maximising the total binomial likelihood, then profile
 # each parameter to obtain an asymmetric interval. Profiling means fixing the
 # parameter of interest, re-optimising the other one, and walking outward until
-# the log-likelihood has dropped by ``num_sigmas ** 2 / 2`` (the chi-square = 1
-# rule for one sigma). This is the same idea as Minuit's MINOS errors and, unlike
-# a weighted least-squares fit with symmetric sigmas, it keeps the bounds inside
-# the physical range and reflects the genuine skew of the likelihood near zero.
+# the negative log-likelihood has risen by ``num_sigmas ** 2 / 2`` (so a 1-sigma
+# interval is reached at a rise of 0.5). This is the chi-square = 1 / MINOS rule
+# that follows from Wilks' theorem -- ``-2 ln(likelihood ratio)`` is
+# asymptotically chi-square distributed -- see
+# https://statproofbook.github.io/P/ci-wilks.html. Unlike a weighted
+# least-squares fit with symmetric sigmas, it keeps the bounds inside the
+# physical range and reflects the genuine skew of the likelihood near zero.
 
+# Physical bounds on a per-round/SPAM error probability: strictly above zero (so
+# the log-likelihood stays finite) and strictly below 0.5 (the maximally mixed
+# rate, where the model becomes degenerate).
 _RATE_FLOOR = 1e-12
 _RATE_CEIL = 0.5 - 1e-9
 
@@ -212,19 +209,22 @@ def _total_neg_log_likelihood(
     eps: float,
     spam: float,
     rounds: npt.NDArray[np.float64],
-    hits: npt.NDArray[np.int_],
+    num_fails: npt.NDArray[np.int_],
     shots: npt.NDArray[np.int_],
 ) -> float:
+    # The binomial "success" event here is a *logical failure*, so the per-point
+    # success count is the number of logical failures ``num_fails`` and ``p`` is
+    # the modelled logical error probability ``_model_lep``.
     model = _model_lep(rounds, eps, spam)
     return -sum(
         log_binomial(p=float(p), num_trials=int(n), num_successes=int(k))
-        for p, n, k in zip(model, shots, hits, strict=True)
+        for p, n, k in zip(model, shots, num_fails, strict=True)
     )
 
 
 def _best_fit(
     rounds: npt.NDArray[np.float64],
-    hits: npt.NDArray[np.int_],
+    num_fails: npt.NDArray[np.int_],
     shots: npt.NDArray[np.int_],
     eps_guess: float,
     spam_guess: float,
@@ -233,7 +233,7 @@ def _best_fit(
 
     Args:
         rounds: Number of QEC rounds for each point.
-        hits: Number of failures observed at each point.
+        num_fails: Number of logical failures observed at each point.
         shots: Number of shots at each point.
         eps_guess: Initial guess for the per-round error.
         spam_guess: Initial guess for the SPAM error.
@@ -245,8 +245,13 @@ def _best_fit(
     def cost(log_params: npt.NDArray[np.float64]) -> float:
         eps = float(np.clip(np.exp(log_params[0]), _RATE_FLOOR, _RATE_CEIL))
         spam = float(np.clip(np.exp(log_params[1]), _RATE_FLOOR, _RATE_CEIL))
-        return _total_neg_log_likelihood(eps, spam, rounds, hits, shots)
+        return _total_neg_log_likelihood(eps, spam, rounds, num_fails, shots)
 
+    # Nelder-Mead is derivative-free and robust for this smooth, low-dimensional
+    # cost; it is not guaranteed to find the global optimum, but the two rates
+    # are well scaled in log space and the subsequent profiling re-evaluates the
+    # likelihood around the returned point, so a small offset does not bias the
+    # reported interval.
     start = np.log([max(eps_guess, _RATE_FLOOR), max(spam_guess, _RATE_FLOOR)])
     result = optimize.minimize(cost, x0=start, method="Nelder-Mead")
     eps = float(np.clip(np.exp(result.x[0]), _RATE_FLOOR, _RATE_CEIL))
@@ -255,40 +260,29 @@ def _best_fit(
 
 
 def _profiled_neg_log_likelihood(
-    fixed_index: int,
+    fixed_eps: bool,
     fixed_value: float,
     rounds: npt.NDArray[np.float64],
-    hits: npt.NDArray[np.int_],
+    num_fails: npt.NDArray[np.int_],
     shots: npt.NDArray[np.int_],
-    fixed_other: float | None = None,
 ) -> float:
-    """Negative log-likelihood with one parameter fixed.
-
-    The other parameter is re-optimised unless ``fixed_other`` is given, in which
-    case it is held at that value (used when the SPAM error is known).
+    """Negative log-likelihood with one parameter fixed and the other refitted.
 
     Args:
-        fixed_index: 0 to fix the per-round error, 1 to fix the SPAM error.
+        fixed_eps: If True the per-round error is held at ``fixed_value`` and the
+            SPAM error is re-optimised; if False the roles are swapped.
         fixed_value: Value of the fixed parameter.
         rounds: Number of QEC rounds for each point.
-        hits: Number of failures observed at each point.
+        num_fails: Number of logical failures observed at each point.
         shots: Number of shots at each point.
-        fixed_other: Value to hold the other parameter at, or None to fit it.
 
     Returns:
-        The minimised negative log-likelihood.
+        The minimised negative log-likelihood over the free parameter.
     """
-    if fixed_other is not None:
-        eps, spam = (
-            (fixed_value, fixed_other)
-            if fixed_index == 0
-            else (fixed_other, fixed_value)
-        )
-        return _total_neg_log_likelihood(eps, spam, rounds, hits, shots)
 
     def cost(other: float) -> float:
-        eps, spam = (fixed_value, other) if fixed_index == 0 else (other, fixed_value)
-        return _total_neg_log_likelihood(eps, spam, rounds, hits, shots)
+        eps, spam = (fixed_value, other) if fixed_eps else (other, fixed_value)
+        return _total_neg_log_likelihood(eps, spam, rounds, num_fails, shots)
 
     result = optimize.minimize_scalar(
         cost, bounds=(_RATE_FLOOR, _RATE_CEIL), method="bounded"
@@ -296,29 +290,32 @@ def _profiled_neg_log_likelihood(
     return float(result.fun)
 
 
-def _profile_interval(
-    fixed_index: int,
+def _profile_from_cost(
+    cost: Callable[[float], float],
     best_value: float,
-    rounds: npt.NDArray[np.float64],
-    hits: npt.NDArray[np.int_],
-    shots: npt.NDArray[np.int_],
     num_sigmas: float,
-    fixed_other: float | None = None,
 ) -> ConfidenceInterval:
+    """Turn a profiled negative-log-likelihood into an asymmetric interval.
+
+    Walks outward from ``best_value`` until ``cost`` has risen by
+    ``num_sigmas ** 2 / 2`` above its value at the best fit (the chi-square = 1
+    rule), then locates that crossing on each side with a bracketed root find.
+
+    Args:
+        cost: The profiled negative log-likelihood as a function of the parameter
+            of interest, minimal at ``best_value``.
+        best_value: The maximum-likelihood value of the parameter.
+        num_sigmas: Width of the interval, in sigmas.
+
+    Returns:
+        The ``(low, best, high)`` confidence interval.
+    """
     # Anchor the target to the profiled likelihood at the best value (the global
     # minimum), so the root is always bracketed regardless of optimiser noise.
-    nll_at_best = _profiled_neg_log_likelihood(
-        fixed_index, best_value, rounds, hits, shots, fixed_other
-    )
-    target = nll_at_best + 0.5 * num_sigmas**2
+    target = cost(best_value) + 0.5 * num_sigmas**2
 
     def excess(value: float) -> float:
-        return (
-            _profiled_neg_log_likelihood(
-                fixed_index, value, rounds, hits, shots, fixed_other
-            )
-            - target
-        )
+        return cost(value) - target
 
     def cross(bound: float) -> float:
         # If the likelihood never rises enough before the bound, the parameter is
@@ -335,6 +332,35 @@ def _profile_interval(
     )
 
 
+def _profile_interval(
+    fixed_eps: bool,
+    best_value: float,
+    rounds: npt.NDArray[np.float64],
+    num_fails: npt.NDArray[np.int_],
+    shots: npt.NDArray[np.int_],
+    num_sigmas: float,
+) -> ConfidenceInterval:
+    """Profile one parameter (refitting the other) for an asymmetric interval.
+
+    Args:
+        fixed_eps: If True profile the per-round error (refitting SPAM); if False
+            profile the SPAM error (refitting the per-round error).
+        best_value: The maximum-likelihood value of the profiled parameter.
+        rounds: Number of QEC rounds for each point.
+        num_fails: Number of logical failures observed at each point.
+        shots: Number of shots at each point.
+        num_sigmas: Width of the interval, in sigmas.
+
+    Returns:
+        The ``(low, best, high)`` confidence interval for the profiled parameter.
+    """
+
+    def cost(value: float) -> float:
+        return _profiled_neg_log_likelihood(fixed_eps, value, rounds, num_fails, shots)
+
+    return _profile_from_cost(cost, best_value, num_sigmas)
+
+
 def fit_leppr_and_spam(
     num_rounds: npt.NDArray[np.int_] | Sequence[int],
     num_fails: npt.NDArray[np.int_] | Sequence[int],
@@ -345,10 +371,10 @@ def fit_leppr_and_spam(
 ) -> tuple[ConfidenceInterval, ConfidenceInterval]:
     """Fit the per-round error and SPAM error with asymmetric intervals.
 
-    The model ``LEP(r) = (1 - (1 - 2 spam)(1 - 2 eps) ** r) / 2`` is fitted to the
-    raw counts by maximum binomial likelihood, and each parameter is profiled to
-    get an asymmetric confidence interval. ``num_sigmas = 1`` corresponds to a
-    chi-square = 1 interval.
+    The model ``LEP(r) = (1 - (1 - 2 * spam) * (1 - 2 * eps) ** r) / 2`` is fitted
+    to the raw counts by maximum binomial likelihood, and each parameter is
+    profiled to get an asymmetric confidence interval. ``num_sigmas = 1``
+    corresponds to a chi-square = 1 interval.
 
     The per-round error and the SPAM error are correlated, so when the data only
     weakly constrains the per-round error its interval can extend down to zero. If
@@ -397,16 +423,20 @@ def fit_leppr_and_spam(
             method="bounded",
         )
         eps_best = float(np.clip(np.exp(eps_only.x), _RATE_FLOOR, _RATE_CEIL))
-        leppr_fit = _profile_interval(
-            0, eps_best, rounds, fails, shots, num_sigmas, fixed_other=spam_best
+        # SPAM is held fixed, so the per-round profile is just the total
+        # likelihood as a function of eps alone.
+        leppr_fit = _profile_from_cost(
+            lambda eps: _total_neg_log_likelihood(eps, spam_best, rounds, fails, shots),
+            eps_best,
+            num_sigmas,
         )
         spam_fit = ConfidenceInterval(low=spam_best, best=spam_best, high=spam_best)
         return leppr_fit, spam_fit
 
     spam_guess = float(np.clip(lep[0] if lep.size else 0.0, _RATE_FLOOR, _RATE_CEIL))
     eps_best, spam_best = _best_fit(rounds, fails, shots, eps_guess, spam_guess)
-    leppr_fit = _profile_interval(0, eps_best, rounds, fails, shots, num_sigmas)
-    spam_fit = _profile_interval(1, spam_best, rounds, fails, shots, num_sigmas)
+    leppr_fit = _profile_interval(True, eps_best, rounds, fails, shots, num_sigmas)
+    spam_fit = _profile_interval(False, spam_best, rounds, fails, shots, num_sigmas)
 
     if leppr_fit.low <= _RATE_FLOOR * 10 < leppr_fit.best:
         warnings.warn(

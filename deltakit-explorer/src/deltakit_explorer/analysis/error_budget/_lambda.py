@@ -7,7 +7,7 @@ from deltakit_circuit._circuit import Circuit
 from deltakit_decode.analysis import RunAllAnalysisEngine
 from uncertainties import ufloat
 
-from deltakit_explorer.analysis import ConfidenceInterval
+from deltakit_explorer.analysis._binomial_fit import ConfidenceInterval
 from deltakit_explorer.analysis.error_budget._generation import (
     generate_decoder_managers_for_lambda,
 )
@@ -97,7 +97,7 @@ def inverse_lambda_at(
     sampling_parameters: SamplingParameters = SamplingParameters(),
     memory_generator: MemoryGenerator
     | Mapping[int, Mapping[int, Circuit]] = get_rotated_surface_code_memory_circuit,
-) -> tuple[float, float]:
+) -> ConfidenceInterval:
     """Compute 1 / Λ.
 
     Warning:
@@ -124,8 +124,10 @@ def inverse_lambda_at(
             ``noise_model`` for different values of the noise parameters.
 
     Returns:
-        the estimation of 1 / Λ along with the standard deviation of the estimation as
-        a 2-tuple.
+        A :class:`ConfidenceInterval` for 1 / Λ. Its bounds are the symmetric
+        ``value ± stddev`` (a 1-sigma interval); the asymmetric counterpart
+        :func:`inverse_lambda_interval_at` profiles the likelihood for genuinely
+        asymmetric bounds.
     """
     point, noise_parameter_names, report = _run_lambda_engine(
         noise_model,
@@ -140,7 +142,9 @@ def inverse_lambda_at(
     lambda_reciprocals = 1 / lambdas
     lambda_reciprocal_stddevs = np.vectorize(reciprocal_stddev)(lambdas, lambda_stddevs)
 
-    return float(lambda_reciprocals[0, 0]), float(lambda_reciprocal_stddevs[0, 0])
+    value = float(lambda_reciprocals[0, 0])
+    stddev = float(lambda_reciprocal_stddevs[0, 0])
+    return ConfidenceInterval(low=value - stddev, best=value, high=value + stddev)
 
 
 def inverse_lambda_interval_at(
@@ -178,16 +182,21 @@ def inverse_lambda_interval_at(
         sampling_parameters,
         memory_generator,
     )
+    # Keep only the rows matching this single noise point before fitting. The
+    # symmetric ``compute_lambda_and_stddev_from_results`` does the same filtering
+    # internally inside its per-point loop; here we evaluate one point, so the
+    # caller selects it and ``compute_lambda_interval_from_results`` takes the
+    # already-filtered frame.
     filtered = _filter_non_close_noise_parameters(
         report, point[:, 0], noise_parameter_names
     )
     lambda_data = compute_lambda_interval_from_results(
         num_rounds_by_distances, filtered
     )
-    assert lambda_data.lambda_low is not None
-    assert lambda_data.lambda_high is not None
+    assert lambda_data.lambda_interval is not None
+    lambda_interval = lambda_data.lambda_interval
     return ConfidenceInterval(
-        low=1 / lambda_data.lambda_high,
+        low=1 / lambda_interval.high,
         best=1 / lambda_data.lambda_,
-        high=1 / lambda_data.lambda_low,
+        high=1 / lambda_interval.low,
     )

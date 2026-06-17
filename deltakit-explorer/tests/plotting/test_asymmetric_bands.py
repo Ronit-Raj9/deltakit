@@ -10,7 +10,7 @@ from deltakit_explorer.analysis import (
     calculate_lambda_asymmetric,
     calculate_lep_and_lep_stddev,
     compute_logical_error_per_round,
-    compute_logical_error_per_round_asymmetric,
+    fit_logical_error_per_round_asymmetric,
     predict_quops_at_distance,
     predict_quops_interval,
 )
@@ -86,7 +86,7 @@ class TestPlotsRun:
 
     def test_leppr_plot_runs_with_asymmetric_fit(self):
         rounds, fails, shots = _model_counts(0.02, 0.005, [2, 6, 10, 14], 500_000)
-        data = compute_logical_error_per_round_asymmetric(rounds, fails, shots)
+        data = fit_logical_error_per_round_asymmetric(rounds, fails, shots)
         fig, _ = plot_leppr(interpolate_leppr(data))
         assert fig is not None
 
@@ -105,14 +105,14 @@ def _model_counts(eps, spam, rounds, shots):
 class TestAsymmetricFitPipeline:
     def test_leppr_fit_populates_bounds(self):
         rounds, fails, shots = _model_counts(0.02, 0.005, [2, 6, 10, 14], 500_000)
-        data = compute_logical_error_per_round_asymmetric(rounds, fails, shots)
+        data = fit_logical_error_per_round_asymmetric(rounds, fails, shots)
         assert data.leppr_low is not None
         assert data.leppr_low <= data.leppr <= data.leppr_high
         assert data.leppr_low >= 0
 
     def test_leppr_band_uses_fit_bounds(self):
         rounds, fails, shots = _model_counts(1e-6, 1e-7, [2, 6, 10, 14], 1_000_000)
-        data = compute_logical_error_per_round_asymmetric(rounds, fails, shots)
+        data = fit_logical_error_per_round_asymmetric(rounds, fails, shots)
         result = interpolate_leppr(data)
         assert np.all(result.lower_boundary <= result.interpolated)
         assert np.all(result.interpolated <= result.upper_boundary)
@@ -125,14 +125,17 @@ class TestAsymmetricFitPipeline:
         for d in distances:
             eps_d = lambda_true ** (-(d + 1) / 2) / lambda0_true
             r, fails, shots = _model_counts(eps_d, 0.005, rounds, 1_000_000)
-            data = compute_logical_error_per_round_asymmetric(r, fails, shots)
+            data = fit_logical_error_per_round_asymmetric(r, fails, shots)
             leppr.append(data.leppr)
             low.append(data.leppr_low)
             high.append(data.leppr_high)
         result = calculate_lambda_asymmetric(distances, leppr, low, high)
         assert result.lambda_ == pytest.approx(lambda_true, rel=0.05)
-        assert result.lambda_low <= result.lambda_ <= result.lambda_high
-        assert result.lambda_low > 0
+        assert result.lambda_interval is not None
+        assert (
+            result.lambda_interval.low <= result.lambda_ <= result.lambda_interval.high
+        )
+        assert result.lambda_interval.low > 0
 
     def test_lambda_asymmetric_length_mismatch_raises(self):
         with pytest.raises(ValueError):

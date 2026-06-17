@@ -9,6 +9,11 @@ from scipy.optimize import curve_fit
 from uncertainties import correlated_values, ufloat, unumpy
 from uncertainties.umath import exp as uexp
 
+from deltakit_explorer.analysis._binomial_fit import (
+    DEFAULT_MAX_LIKELIHOOD_FACTOR,
+    fit_binomial_batch,
+    fit_leppr_and_spam,
+)
 from deltakit_explorer.analysis._estimate import Estimate
 
 
@@ -78,12 +83,6 @@ def epsilon_and_spam_from_log_fit(
         Estimate.from_ufloat(uncertain_spam),
     )
 
-from deltakit_explorer.analysis._binomial_fit import (
-    DEFAULT_MAX_LIKELIHOOD_FACTOR,
-    fit_binomial_batch,
-    fit_leppr_and_spam,
-)
-
 
 @dataclass(frozen=True)
 class LogicalErrorProbabilityPerRoundData:
@@ -96,7 +95,7 @@ class LogicalErrorProbabilityPerRoundData:
         spam_error: Computed SPAM error probability.
         spam_error_stddev: SPAM error probability standard deviation.
         leppr_low: Lower bound of the LEPPR confidence interval. Only set by
-            :func:`compute_logical_error_per_round_asymmetric`, otherwise None.
+            :func:`fit_logical_error_per_round_asymmetric`, otherwise None.
         leppr_high: Upper bound of the LEPPR confidence interval, or None.
         spam_error_low: Lower bound of the SPAM error interval, or None.
         spam_error_high: Upper bound of the SPAM error interval, or None.
@@ -462,7 +461,7 @@ def simulate_different_round_numbers_for_lep_per_round_estimation(
     return np.asarray(nrounds), np.asarray(nfails), np.asarray(nshots)
 
 
-def compute_logical_error_per_round_asymmetric(
+def fit_logical_error_per_round_asymmetric(
     num_rounds: npt.NDArray[np.int_] | Sequence[int],
     num_fails: npt.NDArray[np.int_] | Sequence[int],
     num_shots: npt.NDArray[np.int_] | Sequence[int],
@@ -471,6 +470,10 @@ def compute_logical_error_per_round_asymmetric(
     fixed_spam: float | None = None,
 ) -> LogicalErrorProbabilityPerRoundData:
     """Fit the logical error probability per round with asymmetric intervals.
+
+    The name uses ``fit_`` (rather than ``compute_``) to distinguish this
+    likelihood fit over several round counts from :func:`calculate_lep_asymmetric`,
+    which returns a per-point binomial interval for a single measurement.
 
     Unlike :func:`compute_logical_error_per_round`, which performs a weighted
     least-squares fit with symmetric error bars, this fits the per-round model
@@ -503,6 +506,8 @@ def compute_logical_error_per_round_asymmetric(
     leppr_fit, spam_fit = fit_leppr_and_spam(
         rounds, fails, shots, num_sigmas=num_sigmas, fixed_spam=fixed_spam
     )
+    # The symmetric ``leppr_stddev`` is reported as half the asymmetric interval
+    # width, so consumers that expect a single sigma still get a sensible value.
     return LogicalErrorProbabilityPerRoundData(
         leppr=leppr_fit.best,
         leppr_stddev=(leppr_fit.high - leppr_fit.low) / 2,
